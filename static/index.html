@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Agentic Security Platform - Dashboard</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="sidebar">
+        <div class="logo">🛡️ Agentic Security</div>
+        <nav class="nav">
+            <a href="#overview" class="nav-item active" data-tab="overview">Overview</a>
+            <a href="#findings" class="nav-item" data-tab="findings">Findings</a>
+            <a href="#providers" class="nav-item" data-tab="providers">Providers</a>
+            <a href="#scan" class="nav-item" data-tab="scan">Scan</a>
+        </nav>
+    </div>
+
+    <div class="main-content">
+        <header class="header">
+            <h1>Security Dashboard</h1>
+            <div class="header-info">
+                <span id="status" class="status-badge">Loading...</span>
+                <span id="last-update" class="timestamp">Last update: --:--:--</span>
+                <button id="exit-btn" class="btn-exit">Exit</button>
+            </div>
+        </header>
+
+        <div class="container">
+            <!-- Overview Tab -->
+            <section id="overview" class="tab-content active">
+                <div class="overview-header">
+                    <div class="card risk-card">
+                        <h3>Security Risk Level</h3>
+                        <div class="risk-display">
+                            <div class="risk-circle" id="risk-circle">
+                                <div class="risk-score" id="risk-score">--</div>
+                            </div>
+                            <div class="risk-text">
+                                <div class="risk-label" id="risk-level">Unknown</div>
+                                <div class="risk-subtext" id="risk-message">No data available</div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="card chart-card">
+                        <h3>Findings Distribution</h3>
+                        <canvas id="severityChart" class="compact-chart"></canvas>
+                    </div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-mini">
+                        <div class="stat-icon">📊</div>
+                        <div class="stat-value" id="total-findings">0</div>
+                        <div class="stat-label">Findings</div>
+                    </div>
+                    <div class="stat-mini">
+                        <div class="stat-icon">🔴</div>
+                        <div class="stat-value" id="critical-count">0</div>
+                        <div class="stat-label">Critical</div>
+                    </div>
+                    <div class="stat-mini">
+                        <div class="stat-icon">📁</div>
+                        <div class="stat-value" id="scanned-files">0</div>
+                        <div class="stat-label">Files</div>
+                    </div>
+                </div>
+
+                <div class="card cwe-card">
+                    <h3>MITRE CWE Coverage</h3>
+                    <div id="cwe-tags" class="cwe-tags"></div>
+                </div>
+            </section>
+
+            <!-- Findings Tab -->
+            <section id="findings" class="tab-content">
+                <div class="card">
+                    <h2>Recent Findings</h2>
+                    <div id="findings-list" class="findings-list">
+                        <p class="empty-state">No findings yet. Run a scan to see results.</p>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Providers Tab -->
+            <section id="providers" class="tab-content">
+                <div class="grid-4">
+                    <div id="provider-openai" class="card provider-card">
+                        <div class="provider-header">
+                            <div>
+                                <svg class="provider-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <path fill="#10A37F" d="M22.2819 9.821a5.983 5.983 0 0 0-.52-4.3077a6.046 6.046 0 0 0-6.7945-2.9997a9.126 9.126 0 0 0-12.0688 4.43a5.6 5.6 0 0 0-5.4332 8.9375a5.6 5.6 0 0 0 5.4332 8.9344a9.079 9.079 0 0 0 10.7477 3.3781a5.997 5.997 0 0 0 5.5349-5.0327a5.989 5.989 0 0 0 3.154-4.552z M2 12.001a4.563 4.563 0 0 1 7.957-3.593a4.5 4.5 0 0 0-.13.315a9.126 9.126 0 0 0 1.6655 6.993a4.5 4.5 0 0 0 4.5437 1.4532a4.563 4.563 0 0 1-13.9778-4.766z M20.9995 12.002a4.563 4.563 0 0 1-7.957 3.591a4.5 4.5 0 0 0 .13-.314a9.126 9.126 0 0 0-1.6655-6.993a4.5 4.5 0 0 0-4.5437-1.4532a4.563 4.563 0 0 1 13.9778 4.766z"/>
+                                </svg>
+                                <h3>OpenAI</h3>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggle-openai" class="provider-toggle" data-provider="openai">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="provider-status" id="status-openai">--</div>
+                    </div>
+                    <div id="provider-claude" class="card provider-card">
+                        <div class="provider-header">
+                            <div>
+                                <svg class="provider-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <defs>
+                                        <linearGradient id="claudeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" style="stop-color:#9D4EDD;stop-opacity:1" />
+                                            <stop offset="100%" style="stop-color:#5A189A;stop-opacity:1" />
+                                        </linearGradient>
+                                    </defs>
+                                    <circle cx="12" cy="12" r="11" fill="url(#claudeGradient)"/>
+                                    <text x="12" y="16" font-size="14" font-weight="bold" fill="white" text-anchor="middle">C</text>
+                                </svg>
+                                <h3>Claude</h3>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggle-claude" class="provider-toggle" data-provider="claude">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="provider-status" id="status-claude">--</div>
+                    </div>
+                    <div id="provider-ollama" class="card provider-card">
+                        <div class="provider-header">
+                            <div>
+                                <svg class="provider-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <defs>
+                                        <linearGradient id="ollamaGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" style="stop-color:#FF6B35;stop-opacity:1" />
+                                            <stop offset="100%" style="stop-color:#F7931E;stop-opacity:1" />
+                                        </linearGradient>
+                                    </defs>
+                                    <ellipse cx="12" cy="8" rx="5" ry="6" fill="url(#ollamaGradient)"/>
+                                    <ellipse cx="7" cy="14" rx="4" ry="5" fill="url(#ollamaGradient)"/>
+                                    <ellipse cx="17" cy="14" rx="4" ry="5" fill="url(#ollamaGradient)"/>
+                                    <ellipse cx="12" cy="20" rx="3" ry="3" fill="url(#ollamaGradient)"/>
+                                </svg>
+                                <h3>Ollama</h3>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggle-ollama" class="provider-toggle" data-provider="ollama">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="provider-status" id="status-ollama">--</div>
+                    </div>
+                    <div id="provider-cursor" class="card provider-card">
+                        <div class="provider-header">
+                            <div>
+                                <svg class="provider-icon" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                    <defs>
+                                        <linearGradient id="cursorGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                            <stop offset="0%" style="stop-color:#08B4E2;stop-opacity:1" />
+                                            <stop offset="100%" style="stop-color:#0096D1;stop-opacity:1" />
+                                        </linearGradient>
+                                    </defs>
+                                    <path fill="url(#cursorGradient)" d="M3 3l16 8-16 8V13l11-2-11-2V3z"/>
+                                </svg>
+                                <h3>Cursor</h3>
+                            </div>
+                            <label class="toggle-switch">
+                                <input type="checkbox" id="toggle-cursor" class="provider-toggle" data-provider="cursor">
+                                <span class="toggle-slider"></span>
+                            </label>
+                        </div>
+                        <div class="provider-status" id="status-cursor">--</div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Scan Tab -->
+            <section id="scan" class="tab-content">
+                <div class="card">
+                    <h2>Run Security Scan</h2>
+                    <form id="scan-form" class="scan-form">
+                        <div class="form-group">
+                            <label for="source-path">Source Path</label>
+                            <input type="text" id="source-path" name="source_path" placeholder="e.g., /path/to/project" required>
+                        </div>
+                        <button type="submit" class="btn-primary">Start Scan</button>
+                    </form>
+                    <div id="scan-result" class="scan-result"></div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script src="/static/dashboard.js"></script>
+</body>
+</html>
