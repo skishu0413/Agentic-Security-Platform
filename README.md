@@ -152,4 +152,4 @@ When deploying to a public VPS or OpenStack instance:
 ---
 
 ## 📄 License
-This project is licensed under the MIT License. See the [LICENSE](file:///Users/surajkhadka/Desktop/Projects/Agentic-Security-Platform/LICENSE) file for details.
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
