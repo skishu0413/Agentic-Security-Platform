@@ -14,5 +14,5 @@ jobs:
         with:
           python-version: '3.11'
       - run: pip install -r requirements.txt
-      - run: pytest -q
+      - run: python -m pytest -q
       - run: python agentic_security_platform.py example.py --output /tmp/report.json
