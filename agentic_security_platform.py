@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
 from scanners import ScannerIntegration
 
-SUPPORTED_EXTENSIONS = {".py", ".js", ".ts", ".jsx", ".tsx", ".go", ".java", ".rb", ".php"}
+SUPPORTED_EXTENSIONS = {
+    ".py", ".pyw", ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx",
+    ".go", ".java", ".rb", ".php", ".c", ".cpp", ".cc", ".h", ".hpp",
+    ".cs", ".sh", ".bash", ".rs", ".swift", ".kt", ".kts", ".sql"
+}
+IGNORE_DIRS = {
+    ".git", ".github", ".venv", "venv", "env", "node_modules",
+    "__pycache__", ".pytest_cache", ".codeql", ".idea", ".vscode"
+}
+MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB limit to avoid OOM crashes
 
 
 class AgenticSecurityPlatform:
@@ -23,8 +33,36 @@ class AgenticSecurityPlatform:
         path = Path(source_path)
         if path.is_dir():
             return review_directory(path)
-        source_text = path.read_text(encoding="utf-8")
-        return evaluate_source_code(source_text, source_path)
+        
+        try:
+            if path.stat().st_size > MAX_FILE_SIZE_BYTES:
+                return {
+                    "source_path": source_path,
+                    "summary": {
+                        "finding_count": 0,
+                        "provider_count": 3,
+                        "risk_level": "low",
+                        "covered_cwes": [],
+                        "warnings": [f"File exceeds maximum size limit of {MAX_FILE_SIZE_BYTES // (1024*1024)}MB"]
+                    },
+                    "findings": [],
+                    "providers": self.provider_status()
+                }
+            source_text = path.read_text(encoding="utf-8", errors="ignore")
+            return evaluate_source_code(source_text, source_path)
+        except Exception as e:
+            return {
+                "source_path": source_path,
+                "summary": {
+                    "finding_count": 0,
+                    "provider_count": 3,
+                    "risk_level": "low",
+                    "covered_cwes": [],
+                    "warnings": [f"Error reading file: {str(e)}"]
+                },
+                "findings": [],
+                "providers": self.provider_status()
+            }
 
     def export_report(self, report: dict[str, Any], output_path: str | Path) -> None:
         output = Path(output_path)
@@ -65,13 +103,30 @@ def evaluate_source_code(source_text: str, source_path: str) -> dict[str, Any]:
 def review_directory(root: Path) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     scanned_files = []
+    warnings = []
     scanner = ScannerIntegration(root)
 
-    for path in sorted(root.rglob("*")):
-        if path.is_file() and path.suffix.lower() in SUPPORTED_EXTENSIONS:
-            scanned_files.append(str(path))
-            source_text = path.read_text(encoding="utf-8", errors="ignore")
-            findings.extend(evaluate_source_code(source_text, str(path))["findings"])
+    for dirpath, dirnames, filenames in os.walk(root):
+        # Prune ignored directories in-place
+        dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
+        
+        for filename in filenames:
+            path = Path(dirpath) / filename
+            if path.suffix.lower() in SUPPORTED_EXTENSIONS:
+                try:
+                    file_size = path.stat().st_size
+                    if file_size > MAX_FILE_SIZE_BYTES:
+                        warnings.append(f"Skipped {path.name} (exceeds size limit of {MAX_FILE_SIZE_BYTES // (1024*1024)}MB)")
+                        continue
+                    
+                    scanned_files.append(str(path))
+                    source_text = path.read_text(encoding="utf-8", errors="ignore")
+                    findings.extend(evaluate_source_code(source_text, str(path))["findings"])
+                except PermissionError:
+                    warnings.append(f"Skipped {path.name} (permission denied)")
+                except Exception as e:
+                    warnings.append(f"Skipped {path.name} (error reading file: {str(e)})")
+
 
     bandit_results = scanner.run_bandit()
     codeql_results = scanner.run_codeql()
@@ -91,6 +146,7 @@ def review_directory(root: Path) -> dict[str, Any]:
             "risk_level": "high" if findings else "low",
             "covered_cwes": sorted({f["cwe"] for f in findings}),
             "scanned_files": len(scanned_files),
+            "warnings": warnings,
             "scanner_integrations": {
                 "bandit": len(bandit_results),
                 "codeql": len(codeql_results),

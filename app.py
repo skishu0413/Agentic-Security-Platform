@@ -6,7 +6,7 @@ import signal
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request, Response
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -16,12 +16,22 @@ from agentic_security_platform import AgenticSecurityPlatform
 app = FastAPI(title="Agentic Security Platform", version="0.1.0")
 platform = AgenticSecurityPlatform()
 
+@app.middleware("http")
+async def add_no_cache_headers(request: Request, call_next):
+    response: Response = await call_next(request)
+    if request.url.path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate, max-age=0"
+        response.headers["Pragma"] = "no-cache"
+        response.headers["Expires"] = "0"
+    return response
+
 # Store last scan result for dashboard
 last_scan_result: dict[str, Any] = {
     "summary": {"finding_count": 0, "scanned_files": 0, "covered_cwes": []},
     "findings": [],
     "providers": {"openai": {"enabled": True}, "claude": {"enabled": True}, "ollama": {"enabled": True}},
 }
+
 
 
 

@@ -15,7 +15,10 @@ class ScannerIntegration:
         if shutil.which("bandit") is None:
             return []
         result = subprocess.run(
-            ["bandit", "-r", str(self.root), "-f", "json"],
+            [
+                "bandit", "-r", str(self.root), "-f", "json",
+                "-x", ".git,.github,.venv,venv,env,node_modules,__pycache__,.pytest_cache,.codeql,.idea,.vscode"
+            ],
             capture_output=True,
             text=True,
             check=False,

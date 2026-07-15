@@ -1,6 +1,9 @@
 let severityChart = null;
+let isScanning = false;
 
 async function loadDashboard() {
+    if (isScanning) return;
+
     const statusEl = document.getElementById('status');
     statusEl.textContent = 'Loading...';
     statusEl.className = 'status-badge loading';
@@ -185,15 +188,59 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
 
     const sourcePath = document.getElementById('source-path').value;
     const resultEl = document.getElementById('scan-result');
+    const progressContainer = document.getElementById('scan-progress-container');
+    const progressBarFill = document.getElementById('progress-bar-fill');
+    const progressPercentage = document.getElementById('progress-percentage');
+    const progressStatusText = document.getElementById('progress-status-text');
     const button = e.target.querySelector('button');
     const statusEl = document.getElementById('status');
 
+    // Set scanning state
+    isScanning = true;
+
+    // Reset and show progress UI
     button.disabled = true;
     button.textContent = 'Scanning...';
     statusEl.textContent = 'Scanning...';
     statusEl.className = 'status-badge scanning';
-    resultEl.classList.add('show');
-    resultEl.textContent = 'Scanning in progress...';
+    
+    resultEl.classList.remove('show');
+    progressContainer.classList.add('show');
+    
+    // Configure progress steps (texts only)
+    const steps = [
+        { minPct: 0, maxPct: 25, activeText: '🔍 Analyzing built-in AST heuristics...' },
+        { minPct: 25, maxPct: 50, activeText: '🐍 Invoking Bandit Python static analyzer...' },
+        { minPct: 50, maxPct: 75, activeText: '⚙️ Initializing CodeQL database check...' },
+        { minPct: 75, maxPct: 95, activeText: '📁 Formatting and compiling JSON security report...' }
+    ];
+
+    let currentPct = 0;
+    progressBarFill.style.width = '0%';
+    progressPercentage.textContent = '0%';
+    progressBarFill.style.background = 'linear-gradient(90deg, #3b82f6, #10b981)';
+
+    const intervalTime = 100; // ms
+    const totalSimulatedTime = 3000; // reach 95% in 3 seconds asymptotically
+    const increment = 95 / (totalSimulatedTime / intervalTime);
+
+    const progressInterval = setInterval(() => {
+        if (currentPct < 95) {
+            currentPct = Math.min(95, currentPct + increment);
+            updateProgressUI(currentPct);
+        }
+    }, intervalTime);
+
+    function updateProgressUI(pct) {
+        const roundedPct = Math.round(pct);
+        progressBarFill.style.width = `${roundedPct}%`;
+        progressPercentage.textContent = `${roundedPct}%`;
+
+        const currentStep = steps.find(step => pct >= step.minPct && pct < step.maxPct);
+        if (currentStep) {
+            progressStatusText.textContent = currentStep.activeText;
+        }
+    }
 
     try {
         const response = await fetch('/api/dashboard/scan', {
@@ -204,28 +251,58 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
 
         const data = await response.json();
 
+        // Clear simulation and jump to 100%
+        clearInterval(progressInterval);
+
         if (response.ok) {
+            // Success animation
+            currentPct = 100;
+            progressBarFill.style.width = '100%';
+            progressPercentage.textContent = '100%';
+            progressStatusText.textContent = '✓ Scan complete!';
+
+            // Pause briefly to let user appreciate the complete state
+            await new Promise(resolve => setTimeout(resolve, 600));
+
             resultEl.className = 'scan-result show success';
             resultEl.innerHTML = `
-                <h3>✓ Scan Completed</h3>
-                <p>Findings: ${data.findings_count || 0}</p>
-                <p>Files Scanned: ${data.scanned_files || 0}</p>
+                <h3>✓ Scan Completed Successfully</h3>
+                <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #bbf7d0; text-align: center;">
+                        <span style="font-size: 20px; display: block; margin-bottom: 4px;">⚠️</span>
+                        <strong style="font-size: 18px; color: #0f172a;">${data.findings_count || 0}</strong>
+                        <span style="font-size: 11px; display: block; color: #64748b; text-transform: uppercase;">Findings Detected</span>
+                    </div>
+                    <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #bbf7d0; text-align: center;">
+                        <span style="font-size: 20px; display: block; margin-bottom: 4px;">📁</span>
+                        <strong style="font-size: 18px; color: #0f172a;">${data.scanned_files || 0}</strong>
+                        <span style="font-size: 11px; display: block; color: #64748b; text-transform: uppercase;">Files Scanned</span>
+                    </div>
+                </div>
             `;
             statusEl.textContent = '✓ Ready';
             statusEl.className = 'status-badge ready';
             loadDashboard();
         } else {
+            progressBarFill.style.background = 'var(--danger)';
+            progressStatusText.textContent = '⚠ Scan failed';
+            
             resultEl.className = 'scan-result show error';
             resultEl.textContent = `Error: ${data.detail || 'Failed to scan'}`;
             statusEl.textContent = '⚠ Error';
             statusEl.className = 'status-badge error';
         }
     } catch (error) {
+        clearInterval(progressInterval);
+        progressBarFill.style.background = 'var(--danger)';
+        progressStatusText.textContent = '⚠ Scan failed';
+
         resultEl.className = 'scan-result show error';
         resultEl.textContent = `Error: ${error.message}`;
         statusEl.textContent = '⚠ Error';
         statusEl.className = 'status-badge error';
     } finally {
+        isScanning = false;
         button.disabled = false;
         button.textContent = 'Start Scan';
     }
