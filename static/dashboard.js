@@ -1,5 +1,7 @@
 let severityChart = null;
 let isScanning = false;
+let activeFilters = { high: true, medium: true, low: true };
+let currentFindings = [];
 
 async function loadDashboard() {
     if (isScanning) return;
@@ -27,6 +29,7 @@ function updateDashboard(data) {
     const summary = data.summary || {};
     const findings = data.findings || [];
     const providers = data.providers || {};
+    currentFindings = findings;
 
     // Update risk score and level
     const riskScore = Math.min(100, findings.length * 10);
@@ -44,6 +47,16 @@ function updateDashboard(data) {
     document.getElementById('total-findings').textContent = findings.length;
     document.getElementById('critical-count').textContent = findings.filter(f => f.severity === 'high').length;
     document.getElementById('scanned-files').textContent = summary.scanned_files || 0;
+
+    // Update filter buttons counts
+    const severityCounts = {
+        high: findings.filter(f => f.severity === 'high').length,
+        medium: findings.filter(f => f.severity === 'medium').length,
+        low: findings.filter(f => f.severity === 'low').length,
+    };
+    document.getElementById('filter-high-count').textContent = severityCounts.high;
+    document.getElementById('filter-medium-count').textContent = severityCounts.medium;
+    document.getElementById('filter-low-count').textContent = severityCounts.low;
 
     // Update CWEs
     const cwes = summary.covered_cwes || [];
@@ -104,31 +117,61 @@ function updateSeverityChart(findings) {
             maintainAspectRatio: true,
             plugins: {
                 legend: {
-                    position: 'bottom',
+                    display: false,
                 },
             },
         },
     });
+
+    // Apply active filter state visibility to the new chart slices
+    const indexMap = { high: 0, medium: 1, low: 2 };
+    for (const [sev, idx] of Object.entries(indexMap)) {
+        if (!activeFilters[sev]) {
+            severityChart.toggleDataVisibility(idx);
+        }
+    }
+    severityChart.update();
 }
 
 function updateFindingsList(findings) {
     const container = document.getElementById('findings-list');
-    if (findings.length === 0) {
-        container.innerHTML = '<p class="empty-state">No findings yet. Run a scan to see results.</p>';
+    
+    // Sort findings by severity: high -> medium -> low
+    const severityOrder = { high: 0, medium: 1, low: 2 };
+    const sortedFindings = [...findings].sort((a, b) => {
+        const sevA = (a.severity || 'low').toLowerCase();
+        const sevB = (b.severity || 'low').toLowerCase();
+        const orderA = severityOrder[sevA] !== undefined ? severityOrder[sevA] : 3;
+        const orderB = severityOrder[sevB] !== undefined ? severityOrder[sevB] : 3;
+        return orderA - orderB;
+    });
+
+    const filteredFindings = sortedFindings.filter(f => {
+        const sev = (f.severity || 'low').toLowerCase();
+        return activeFilters[sev] === true;
+    });
+
+    if (filteredFindings.length === 0) {
+        container.innerHTML = '<p class="empty-state">No findings match the selected severity filters.</p>';
         return;
     }
 
-    const html = findings.map(finding => {
+    const html = filteredFindings.map(finding => {
         const displayPath = finding.file || 'N/A';
+        const sev = (finding.severity || 'low').toLowerCase();
         
         return `
-        <div class="finding-item ${finding.severity}">
+        <div class="finding-item ${sev}">
             <div>
                 <div class="finding-rule">${finding.rule || 'Unknown'}</div>
-                <div class="finding-cwe">${finding.cwe || 'N/A'}</div>
+                <div class="finding-cwe">${finding.cwe || 'N/A'}${finding.cwe_title ? `: ${finding.cwe_title}` : ''}</div>
                 <div class="finding-description" style="font-size: 13px; color: var(--text-light); margin-top: 6px; font-weight: 500;">
                     ${finding.description || ''}
                 </div>
+                ${finding.cwe_description ? `
+                <div class="cwe-description" style="font-size: 11px; font-style: italic; color: #888; margin-top: 4px; line-height: 1.4;">
+                    <strong>MITRE CWE Detail:</strong> ${finding.cwe_description}
+                </div>` : ''}
             </div>
             <div style="font-size: 13px; line-height: 1.5;">
                 <div style="color: var(--text); word-break: break-all;">
@@ -139,8 +182,8 @@ function updateFindingsList(findings) {
                     <strong>Line:</strong> ${finding.line}
                 </div>` : ''}
             </div>
-            <div class="finding-severity ${finding.severity}">
-                ${finding.severity.toUpperCase()}
+            <div class="finding-severity ${sev}">
+                ${sev.toUpperCase()}
             </div>
         </div>
         `;
@@ -343,26 +386,6 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
     }
 });
 
-// Exit button handling
-document.getElementById('exit-btn').addEventListener('click', async () => {
-    const confirmed = confirm('Are you sure you want to exit the security dashboard? The server will shut down.');
-    if (!confirmed) return;
-
-    try {
-        const response = await fetch('/api/shutdown', { method: 'POST' });
-        if (response.ok) {
-            const message = document.createElement('div');
-            message.style.cssText = 'position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: #10b981; color: white; padding: 20px 40px; border-radius: 8px; font-size: 16px; z-index: 10000;';
-            message.textContent = 'Server shut down successfully. Dashboard closing...';
-            document.body.appendChild(message);
-            setTimeout(() => window.close(), 2000);
-        }
-    } catch (error) {
-        console.error('Exit error:', error);
-        alert(`Failed to exit: ${error.message}`);
-    }
-});
-
 // Export report button handling
 document.getElementById('export-btn').addEventListener('click', () => {
     window.location.href = '/api/dashboard/export';
@@ -376,6 +399,51 @@ document.addEventListener('DOMContentLoaded', () => {
         if (providerSettings[provider]) {
             toggle.checked = providerSettings[provider].enabled;
         }
+    });
+
+    // Initialize interactive severity filters click listeners
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+            const severity = btn.getAttribute('data-severity');
+            activeFilters[severity] = !activeFilters[severity];
+            
+            // Toggle active styling
+            if (activeFilters[severity]) {
+                btn.classList.add('active');
+                if (severity === 'high') {
+                    btn.style.background = '#fee2e2';
+                    btn.style.color = '#b91c1c';
+                    btn.style.borderColor = '#ef4444';
+                } else if (severity === 'medium') {
+                    btn.style.background = '#fef3c7';
+                    btn.style.color = '#b45309';
+                    btn.style.borderColor = '#f59e0b';
+                } else if (severity === 'low') {
+                    btn.style.background = '#dbeafe';
+                    btn.style.color = '#1d4ed8';
+                    btn.style.borderColor = '#3b82f6';
+                }
+            } else {
+                btn.classList.remove('active');
+                btn.style.background = '#f3f4f6';
+                btn.style.color = '#9ca3af';
+                btn.style.borderColor = '#e5e7eb';
+            }
+
+            // Sync with Chart.js slice visibility
+            if (severityChart) {
+                const indexMap = { high: 0, medium: 1, low: 2 };
+                const chartIndex = indexMap[severity];
+                const isVisible = severityChart.getDataVisibility(chartIndex);
+                if (isVisible !== activeFilters[severity]) {
+                    severityChart.toggleDataVisibility(chartIndex);
+                    severityChart.update();
+                }
+            }
+
+            // Render filtered findings list
+            updateFindingsList(currentFindings);
+        });
     });
     
     // Load dashboard data

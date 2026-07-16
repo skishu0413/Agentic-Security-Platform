@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import warnings
+warnings.filterwarnings("ignore", message=".*urllib3 v2.*")
+
 import json
 import os
 import signal
@@ -69,7 +72,6 @@ def get_dashboard_stats() -> dict[str, Any]:
 
 @app.get("/api/dashboard/export")
 def export_dashboard_stats():
-    from fastapi import Response
     formatted_json = json.dumps(last_scan_result, indent=2)
     return Response(
         content=formatted_json,

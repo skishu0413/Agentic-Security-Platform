@@ -45,10 +45,16 @@ The platform has been optimized to evaluate code efficiency and security accurac
 
 | CWE Identifier | Vulnerability Description | Default Severity | Source |
 | :--- | :--- | :--- | :--- |
+| **CWE-22** | Path Traversal | **High** | Built-in (directory traversal indicators) |
 | **CWE-78** | Command/Shell Injection | **High** | Built-in (subprocess shell=True) |
+| **CWE-89** | SQL Injection | **High** | Built-in (raw SQL string formatting) |
 | **CWE-94** | Dynamic Code Execution | **High** | Built-in (eval/exec usage) |
 | **CWE-295** | SSL Verification Bypass | **Medium** | Built-in (requests verify=False) |
+| **CWE-312** | Cleartext Sensitive Log Storage | **Medium** | Built-in (logging credentials/secrets) |
+| **CWE-327** | Risky Cryptographic Algorithm | **Medium** | Built-in (MD5 or SHA-1 hashes) |
+| **CWE-338** | Cryptographically Weak PRNG | **Medium** | Built-in (random module usage) |
 | **CWE-502** | Unsafe Deserialization | **High** | Built-in (pickle/yaml.load) |
+| **CWE-798** | Hardcoded Credentials | **High** | Built-in (assigned secrets/API keys) |
 | **CWE-77** | Command Injection (General) | **Medium** | Bandit wrapper integration |
 | **CWE-79** | Cross-Site Scripting (XSS) / Semantic issues | **Medium** | CodeQL integration |
 

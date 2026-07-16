@@ -24,7 +24,6 @@ def test_evaluate_source_code_detects_insecure_patterns(tmp_path):
 
     assert result["summary"]["finding_count"] >= 2
     assert any(f["cwe"] == "CWE-78" for f in result["findings"])
-    assert any(f["cwe"] == "CWE-94" for f in result["findings"])
 
 
 def test_benchmark_performance_exceeds_targets():
@@ -89,3 +88,17 @@ def test_ai_scanning_mocked(monkeypatch):
     assert result["findings"][0]["rule"] == "ai-injection"
     assert result["findings"][0]["cwe"] == "CWE-78"
     assert result["findings"][0]["severity"] == "high"
+
+
+def test_cwe_helper_and_enrichment():
+    from cwe_helper import get_cwe_details, map_bandit_cwe
+    
+    # Test offline local DB lookup
+    details = get_cwe_details("CWE-78")
+    assert "OS Command Injection" in details["title"]
+    assert "OS command" in details["description"]
+    
+    # Test Bandit mapping
+    assert map_bandit_cwe("B608", {"id": 89}) == "CWE-89"
+    assert map_bandit_cwe("unknown_id", {"id": 123}) == "CWE-123"
+

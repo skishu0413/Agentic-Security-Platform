@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import warnings
+warnings.filterwarnings("ignore", message=".*urllib3 v2.*")
+
 import json
 import os
 from pathlib import Path
@@ -102,37 +105,49 @@ class AgenticSecurityPlatform:
     def run_review(self, source_path: str, enabled_providers: list[str] | None = None) -> dict[str, Any]:
         path = Path(source_path)
         if path.is_dir():
-            return review_directory(path, enabled_providers, self)
-        
-        try:
-            if path.stat().st_size > MAX_FILE_SIZE_BYTES:
-                return {
+            report = review_directory(path, enabled_providers, self)
+        else:
+            try:
+                if path.stat().st_size > MAX_FILE_SIZE_BYTES:
+                    report = {
+                        "source_path": source_path,
+                        "summary": {
+                            "finding_count": 0,
+                            "provider_count": len(self.providers),
+                            "risk_level": "low",
+                            "covered_cwes": [],
+                            "warnings": [f"File exceeds maximum size limit of {MAX_FILE_SIZE_BYTES // (1024*1024)}MB"]
+                        },
+                        "findings": [],
+                        "providers": self.provider_status(enabled_providers)
+                    }
+                else:
+                    source_text = path.read_text(encoding="utf-8", errors="ignore")
+                    report = evaluate_source_code(source_text, source_path, enabled_providers, self)
+            except Exception as e:
+                report = {
                     "source_path": source_path,
                     "summary": {
                         "finding_count": 0,
                         "provider_count": len(self.providers),
                         "risk_level": "low",
                         "covered_cwes": [],
-                        "warnings": [f"File exceeds maximum size limit of {MAX_FILE_SIZE_BYTES // (1024*1024)}MB"]
+                        "warnings": [f"Error reading file: {str(e)}"]
                     },
                     "findings": [],
                     "providers": self.provider_status(enabled_providers)
                 }
-            source_text = path.read_text(encoding="utf-8", errors="ignore")
-            return evaluate_source_code(source_text, source_path, enabled_providers, self)
-        except Exception as e:
-            return {
-                "source_path": source_path,
-                "summary": {
-                    "finding_count": 0,
-                    "provider_count": len(self.providers),
-                    "risk_level": "low",
-                    "covered_cwes": [],
-                    "warnings": [f"Error reading file: {str(e)}"]
-                },
-                "findings": [],
-                "providers": self.provider_status(enabled_providers)
-            }
+
+        # Enrich all findings with MITRE CWE details dynamically
+        if "findings" in report:
+            from cwe_helper import get_cwe_details
+            for f in report["findings"]:
+                cwe_id = f.get("cwe")
+                if cwe_id:
+                    details = get_cwe_details(cwe_id)
+                    f["cwe_title"] = details.get("title", "")
+                    f["cwe_description"] = details.get("description", "")
+        return report
 
     def evaluate_with_ai(self, source_text: str, provider: str) -> list[dict[str, Any]]:
         if provider == "openai":
@@ -261,57 +276,25 @@ def evaluate_source_code(
     findings = []
     lines = source_text.splitlines()
 
-    # Heuristic 1: shell-injection
-    for i, line in enumerate(lines, 1):
-        l = line.lower()
-        if "subprocess" in l and "shell=true" in l:
-            findings.append({
-                "file": source_path,
-                "line": i,
-                "rule": "shell-injection",
-                "cwe": "CWE-78",
-                "severity": "high",
-                "description": "subprocess called with shell=True"
-            })
-
-    # Heuristic 2: dynamic-exec
-    for i, line in enumerate(lines, 1):
-        l = line.lower()
-        if "eval(" in l or "exec(" in l:
-            findings.append({
-                "file": source_path,
-                "line": i,
-                "rule": "dynamic-exec",
-                "cwe": "CWE-94",
-                "severity": "high",
-                "description": "eval or exec statement used"
-            })
-
-    # Heuristic 3: ssl-verification-bypass
-    for i, line in enumerate(lines, 1):
-        l = line.lower()
-        if "requests" in l and "verify=false" in l:
-            findings.append({
-                "file": source_path,
-                "line": i,
-                "rule": "ssl-verification-bypass",
-                "cwe": "CWE-295",
-                "severity": "medium",
-                "description": "requests call with verify=False"
-            })
-
-    # Heuristic 4: unsafe-deserialization
-    for i, line in enumerate(lines, 1):
-        l = line.lower()
-        if "pickle" in l or "yaml.load" in l:
-            findings.append({
-                "file": source_path,
-                "line": i,
-                "rule": "unsafe-deserialization",
-                "cwe": "CWE-502",
-                "severity": "high",
-                "description": "unsafe deserialization using pickle or yaml.load"
-            })
+    # Run Bandit local static checks dynamically on this file
+    if not is_dir_scan and Path(source_path).exists() and Path(source_path).is_file():
+        try:
+            scanner = ScannerIntegration(source_path)
+            bandit_results = scanner.run_bandit()
+            if bandit_results:
+                from cwe_helper import map_bandit_cwe
+                for result in bandit_results:
+                    cwe_id = map_bandit_cwe(result.get("test_id", ""), result.get("issue_cwe"))
+                    findings.append({
+                        "file": source_path,
+                        "line": result.get("line_number"),
+                        "rule": result.get("test_id", "bandit"),
+                        "cwe": cwe_id,
+                        "severity": result.get("issue_severity", "medium").lower(),
+                        "description": result.get("issue_text", "Bandit detected issue")
+                    })
+        except Exception:
+            pass
 
     # Run AI analysis
     if enabled_providers and platform_instance:
@@ -420,13 +403,15 @@ def review_directory(
     bandit_results = scanner.run_bandit()
     codeql_results = scanner.run_codeql()
     if bandit_results:
+        from cwe_helper import map_bandit_cwe
         for result in bandit_results:
+            cwe_id = map_bandit_cwe(result.get("test_id", ""), result.get("issue_cwe"))
             findings.append({
                 "file": result.get("filename", ""),
                 "line": result.get("line_number"),
                 "rule": result.get("test_id", "bandit"),
-                "cwe": "CWE-77",
-                "severity": "medium",
+                "cwe": cwe_id,
+                "severity": result.get("issue_severity", "medium").lower(),
                 "description": result.get("issue_text", "Bandit detected issue")
             })
     if codeql_results:

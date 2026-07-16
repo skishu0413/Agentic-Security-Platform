@@ -25,7 +25,6 @@
                 <span id="status" class="status-badge">Loading...</span>
                 <span id="last-update" class="timestamp">Last update: --:--:--</span>
                 <button id="export-btn" class="btn-export" style="display: none;">Export Report</button>
-                <button id="exit-btn" class="btn-exit">Exit</button>
             </div>
         </header>
 
@@ -37,7 +36,10 @@
                         <h3>Security Risk Level</h3>
                         <div class="risk-display">
                             <div class="risk-circle" id="risk-circle">
-                                <div class="risk-score" id="risk-score">--</div>
+                                <div style="display: flex; flex-direction: column; align-items: center;">
+                                    <div class="risk-score" id="risk-score">--</div>
+                                    <span style="font-size: 10px; color: rgba(255,255,255,0.85); font-weight: bold; margin-top: -2px; letter-spacing: 0.5px;">SCORE</span>
+                                </div>
                             </div>
                             <div class="risk-text">
                                 <div class="risk-label" id="risk-level">Unknown</div>
@@ -47,7 +49,26 @@
                     </div>
                     <div class="card chart-card">
                         <h3>Findings Distribution</h3>
-                        <canvas id="severityChart" class="compact-chart"></canvas>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 20px; flex-grow: 1;">
+                            <div style="flex: 1; max-height: 180px; position: relative; display: flex; justify-content: center;">
+                                <canvas id="severityChart" class="compact-chart"></canvas>
+                            </div>
+                            <div class="severity-filters" style="display: flex; flex-direction: column; gap: 10px; min-width: 140px;">
+                                <label style="font-weight: bold; font-size: 11px; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Filter Severity</label>
+                                <button id="filter-high" class="filter-btn active" data-severity="high" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; border: 1px solid #ef4444; background: #fee2e2; color: #b91c1c; font-weight: 600; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                                    <span style="display: flex; align-items: center; gap: 6px;">🔴 High</span>
+                                    <span id="filter-high-count">0</span>
+                                </button>
+                                <button id="filter-medium" class="filter-btn active" data-severity="medium" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; border: 1px solid #f59e0b; background: #fef3c7; color: #b45309; font-weight: 600; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                                    <span style="display: flex; align-items: center; gap: 6px;">🟡 Medium</span>
+                                    <span id="filter-medium-count">0</span>
+                                </button>
+                                <button id="filter-low" class="filter-btn active" data-severity="low" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; border: 1px solid #3b82f6; background: #dbeafe; color: #1d4ed8; font-weight: 600; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                                    <span style="display: flex; align-items: center; gap: 6px;">🔵 Low</span>
+                                    <span id="filter-low-count">0</span>
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
 
@@ -60,7 +81,7 @@
                     <div class="stat-mini">
                         <div class="stat-icon">🔴</div>
                         <div class="stat-value" id="critical-count">0</div>
-                        <div class="stat-label">Critical</div>
+                        <div class="stat-label">High / Critical</div>
                     </div>
                     <div class="stat-mini">
                         <div class="stat-icon">📁</div>
