@@ -586,6 +586,23 @@ body {
     transform: translateY(-2px);
 }
 
+.btn-export {
+    padding: 8px 16px;
+    background: var(--success);
+    color: white;
+    border: none;
+    border-radius: 6px;
+    font-weight: 600;
+    cursor: pointer;
+    font-size: 12px;
+    transition: all 0.3s ease;
+}
+
+.btn-export:hover {
+    background: #059669;
+    transform: translateY(-2px);
+}
+
 .scan-result {
 
     margin-top: 20px;

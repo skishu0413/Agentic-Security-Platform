@@ -1,5 +1,6 @@
 import json
 from pathlib import Path
+from unittest.mock import MagicMock
 
 from agentic_security_platform import (
     AgenticSecurityPlatform,
@@ -37,7 +38,7 @@ def test_platform_reports_provider_statuses():
     platform = AgenticSecurityPlatform()
     status = platform.provider_status()
 
-    assert set(status.keys()) == {"openai", "claude", "ollama"}
+    assert set(status.keys()) == {"openai", "claude", "ollama", "cursor"}
     assert all(isinstance(v["enabled"], bool) for v in status.values())
 
 
@@ -52,4 +53,39 @@ def test_platform_export_json(tmp_path):
 
     data = json.loads(output_path.read_text(encoding="utf-8"))
     assert data["summary"]["finding_count"] >= 0
-    assert data["summary"]["provider_count"] == 3
+    assert data["summary"]["provider_count"] == 4
+
+
+def test_parse_llm_json():
+    platform = AgenticSecurityPlatform()
+    
+    clean_list = '[{"rule": "test-rule", "cwe": "CWE-123", "severity": "high", "description": "Test"}]'
+    res = platform._parse_llm_json(clean_list)
+    assert len(res) == 1
+    assert res[0]["rule"] == "test-rule"
+    
+    md_wrapped = '```json\n{"findings": [{"rule": "test-rule-2", "cwe": "CWE-456", "severity": "low", "description": "Test 2"}]}\n```'
+    res = platform._parse_llm_json(md_wrapped)
+    assert len(res) == 1
+    assert res[0]["rule"] == "test-rule-2"
+
+
+def test_ai_scanning_mocked(monkeypatch):
+    platform = AgenticSecurityPlatform()
+    monkeypatch.setattr("agentic_security_platform.check_provider_configured", lambda p: p == "openai")
+    
+    mock_client = MagicMock()
+    mock_message = MagicMock()
+    mock_message.content = '{"findings": [{"rule": "ai-injection", "cwe": "CWE-78", "severity": "high", "description": "AI"}]}'
+    mock_choice = MagicMock()
+    mock_choice.message = mock_message
+    mock_client.chat.completions.create.return_value = MagicMock(choices=[mock_choice])
+    
+    monkeypatch.setattr("openai.OpenAI", lambda **kwargs: mock_client)
+    monkeypatch.setenv("OPENAI_API_KEY", "mock-key")
+    
+    result = evaluate_source_code("some benign code", "dummy.py", enabled_providers=["openai"], platform_instance=platform)
+    assert result["summary"]["finding_count"] == 1
+    assert result["findings"][0]["rule"] == "ai-injection"
+    assert result["findings"][0]["cwe"] == "CWE-78"
+    assert result["findings"][0]["severity"] == "high"

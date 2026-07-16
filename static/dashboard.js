@@ -62,6 +62,16 @@ function updateDashboard(data) {
     // Update timestamp
     const now = new Date();
     document.getElementById('last-update').textContent = `Last update: ${now.toLocaleTimeString()}`;
+
+    // Show export button if results exist
+    const exportBtn = document.getElementById('export-btn');
+    if (exportBtn) {
+        if (findings.length > 0 || (summary && summary.scanned_files > 0)) {
+            exportBtn.style.display = 'inline-block';
+        } else {
+            exportBtn.style.display = 'none';
+        }
+    }
 }
 
 function updateSeverityChart(findings) {
@@ -242,11 +252,20 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
         }
     }
 
+    // Get checked/enabled providers from checkboxes
+    const providers = [];
+    ['openai', 'claude', 'ollama', 'cursor'].forEach(p => {
+        const toggle = document.getElementById(`toggle-${p}`);
+        if (toggle && toggle.checked) {
+            providers.push(p);
+        }
+    });
+
     try {
         const response = await fetch('/api/dashboard/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_path: sourcePath }),
+            body: JSON.stringify({ source_path: sourcePath, providers: providers }),
         });
 
         const data = await response.json();
@@ -282,7 +301,8 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
             `;
             statusEl.textContent = '✓ Ready';
             statusEl.className = 'status-badge ready';
-            loadDashboard();
+            isScanning = false;
+            await loadDashboard();
         } else {
             progressBarFill.style.background = 'var(--danger)';
             progressStatusText.textContent = '⚠ Scan failed';
@@ -326,6 +346,11 @@ document.getElementById('exit-btn').addEventListener('click', async () => {
         console.error('Exit error:', error);
         alert(`Failed to exit: ${error.message}`);
     }
+});
+
+// Export report button handling
+document.getElementById('export-btn').addEventListener('click', () => {
+    window.location.href = '/api/dashboard/export';
 });
 
 document.addEventListener('DOMContentLoaded', () => {

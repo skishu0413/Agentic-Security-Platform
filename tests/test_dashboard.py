@@ -23,3 +23,14 @@ def test_dashboard_scan_endpoint(tmp_path):
     data = response.json()
     assert data['status'] == 'ok'
     assert 'findings_count' in data
+
+
+def test_dashboard_export_endpoint():
+    client = TestClient(app)
+    response = client.get('/api/dashboard/export')
+    assert response.status_code == 200
+    assert response.headers['content-disposition'] == 'attachment; filename=security_report.json'
+    data = response.json()
+    assert 'summary' in data
+    assert 'findings' in data
+    assert 'providers' in data

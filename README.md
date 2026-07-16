@@ -14,7 +14,7 @@ A professional evaluation and security audit platform designed for checking sour
 
 *   **🔍 AST-Based Heuristics**: Immediate detection of risky patterns like shell injection, dynamic execution (`eval`/`exec`), weak SSL verification, and unsafe deserialization.
 *   **🔗 Deep Security Integrations**: Seamlessly wraps and merges results from **Bandit** (Python static analysis) and **CodeQL** (semantic analysis database creation).
-*   **🤖 Multi-Provider Statusing**: Real-time status reporting for LLM providers (**OpenAI**, **Anthropic Claude**, and **Ollama**).
+*   **🤖 Multi-Provider AI Scanning**: Real-time status reporting and true AI-powered security auditing using **OpenAI**, **Anthropic Claude**, local **Ollama**, or **Cursor** fallbacks.
 *   **📊 Interactive Web Dashboard**: A modern, single-page UI built on FastAPI to execute scans, monitor provider states, inspect vulnerability classifications, and view live metrics.
 *   **💾 MLOps & CI/CD Ready**: Generates standard JSON reports for easy ingestion by downstream security operations and automation tools.
 
@@ -57,9 +57,20 @@ The platform has been optimized to evaluate code efficiency and security accurac
 ## 🛠️ Quick Start
 
 ### 1. Prerequisites
-Ensure you have Python 3.9+ installed. For external scanner integrations:
-*   **Bandit**: `pip install bandit` (or run in environment)
-*   **CodeQL**: Install the CodeQL CLI and ensure `codeql` is in your `PATH`.
+Ensure you have Python 3.9+ installed. The platform supports three levels of scanning:
+
+1. **AST Heuristics (Built-in)**: Requires **zero setup**. Runs out of the box.
+2. **Bandit (Python Static Analysis)**:
+   * Install via pip:
+     ```bash
+     pip install bandit
+     ```
+   * The scanner will auto-detect `bandit` if it is available in your active environment path.
+3. **CodeQL (Semantic Analysis)**:
+   * Download the CodeQL CLI binaries for your OS from [CodeQL GitHub Releases](https://github.com/github/codeql-cli-binaries/releases).
+   * Extract the contents to a folder of your choice (e.g. `/usr/local/bin/codeql` or similar).
+   * Add the extracted `codeql` directory to your system's `PATH` environment variable.
+   * Verify the installation by running `codeql --version` in your terminal.
 
 ### 2. Setup
 Clone the repository and install the dependencies:
@@ -76,6 +87,20 @@ Verify the installation by running the test suite:
 ```bash
 python3 -m pytest -v
 ```
+
+### 🔑 API Keys & AI Scanning Configuration
+
+The platform supports hybrid scanning (local AST heuristics + external tools + AI model reviews). 
+
+To configure AI-powered code reviews:
+1. Copy `.env.example` to `.env`:
+   ```bash
+   cp .env.example .env
+   ```
+2. Open `.env` and fill in your API keys (e.g., `OPENAI_API_KEY`, `ANTHROPIC_API_KEY`).
+
+> [!NOTE]
+> **No API Keys? No problem!** If you do not configure any API keys (or disable them in the dashboard), the platform automatically falls back to **purely local, offline static scanning** (using built-in AST heuristics and Bandit/CodeQL if installed). It will not crash or query any external APIs.
 
 ---
 
@@ -144,6 +169,7 @@ When deploying to a public VPS or OpenStack instance:
 ├── Dockerfile                  # Platform container deployment definition
 ├── docker-compose.yml          # Container orchestration definition
 ├── requirements.txt            # Python dependencies configuration
+├── .env.example                # Configuration template for API keys
 ├── SECURITY_TOOLING.md         # Strategic security tooling blueprint
 ├── README.md                   # Platform documentation
 └── LICENSE                     # MIT License
