@@ -37,7 +37,9 @@ SUPPORTED_EXTENSIONS = {
 }
 IGNORE_DIRS = {
     ".git", ".github", ".venv", "venv", "env", "node_modules",
-    "__pycache__", ".pytest_cache", ".codeql", ".idea", ".vscode"
+    "__pycache__", ".pytest_cache", ".codeql", ".idea", ".vscode",
+    "dist", "build", "assets", "out", "target", "bin", "obj",
+    ".next", ".nuxt", ".cache", "coverage", "htmlcov"
 }
 MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB limit
 
@@ -253,7 +255,8 @@ def evaluate_source_code(
     source_text: str,
     source_path: str,
     enabled_providers: list[str] | None = None,
-    platform_instance: AgenticSecurityPlatform | None = None
+    platform_instance: AgenticSecurityPlatform | None = None,
+    is_dir_scan: bool = False
 ) -> dict[str, Any]:
     findings = []
     lines = source_text.splitlines()
@@ -332,6 +335,16 @@ def evaluate_source_code(
                         "description": f.get("description", "AI detected security vulnerability")
                     })
 
+    # Format single file path if we are scanning a file directly
+    if not is_dir_scan:
+        for f in findings:
+            if "file" in f:
+                try:
+                    p = Path(f["file"]).resolve()
+                    f["file"] = f"{p.parent.name}/{p.name}"
+                except Exception:
+                    pass
+
     providers_status = {}
     if platform_instance:
         providers_status = platform_instance.provider_status(enabled_providers)
@@ -395,7 +408,8 @@ def review_directory(
                         source_text,
                         str(path),
                         enabled_providers if run_ai else None,
-                        platform_instance
+                        platform_instance,
+                        is_dir_scan=True
                     )
                     findings.extend(file_result["findings"])
                 except PermissionError:
@@ -406,17 +420,15 @@ def review_directory(
     bandit_results = scanner.run_bandit()
     codeql_results = scanner.run_codeql()
     if bandit_results:
-        findings.extend(
-            {
+        for result in bandit_results:
+            findings.append({
                 "file": result.get("filename", ""),
                 "line": result.get("line_number"),
                 "rule": result.get("test_id", "bandit"),
                 "cwe": "CWE-77",
                 "severity": "medium",
                 "description": result.get("issue_text", "Bandit detected issue")
-            }
-            for result in bandit_results
-        )
+            })
     if codeql_results:
         findings.append({
             "file": str(root),
@@ -425,6 +437,20 @@ def review_directory(
             "severity": "medium",
             "description": "CodeQL semantic vulnerability check complete"
         })
+
+    # Format all findings files to start with the root directory name
+    for f in findings:
+        if "file" in f:
+            try:
+                p = Path(f["file"]).resolve()
+                r = Path(root).resolve()
+                if p.is_relative_to(r):
+                    rel = p.relative_to(r)
+                    f["file"] = str(Path(r.name) / rel)
+                else:
+                    f["file"] = f"{p.parent.name}/{p.name}"
+            except Exception:
+                pass
 
     providers_status = {}
     if platform_instance:

@@ -17,7 +17,7 @@ class ScannerIntegration:
         result = subprocess.run(
             [
                 "bandit", "-r", str(self.root), "-f", "json",
-                "-x", ".git,.github,.venv,venv,env,node_modules,__pycache__,.pytest_cache,.codeql,.idea,.vscode"
+                "-x", ".git,.github,.venv,venv,env,node_modules,__pycache__,.pytest_cache,.codeql,.idea,.vscode,dist,build,assets,out,target,bin,obj,.next,.nuxt,.cache,coverage,htmlcov"
             ],
             capture_output=True,
             text=True,

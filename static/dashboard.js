@@ -119,11 +119,7 @@ function updateFindingsList(findings) {
     }
 
     const html = findings.map(finding => {
-        let displayPath = finding.file || 'N/A';
-        if (displayPath !== 'N/A' && displayPath.includes('/')) {
-            const parts = displayPath.split('/');
-            displayPath = parts.slice(-3).join('/');
-        }
+        const displayPath = finding.file || 'N/A';
         
         return `
         <div class="finding-item ${finding.severity}">
