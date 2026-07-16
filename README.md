@@ -66,12 +66,7 @@ The platform has been optimized to evaluate code efficiency and security accurac
 Ensure you have Python 3.9+ installed. The platform supports three levels of scanning:
 
 1. **AST Heuristics (Built-in)**: Requires **zero setup**. Runs out of the box.
-2. **Bandit (Python Static Analysis)**:
-   * Install via pip:
-     ```bash
-     pip install bandit
-     ```
-   * The scanner will auto-detect `bandit` if it is available in your active environment path.
+2. **Bandit (Python Static Analysis)**: Installed automatically as part of the project dependencies (`requirements.txt`). The platform auto-discovers the local environment binary and runs folder-wide scans in a single optimized subprocess.
 3. **CodeQL (Semantic Analysis)**:
    * Download the CodeQL CLI binaries for your OS from [CodeQL GitHub Releases](https://github.com/github/codeql-cli-binaries/releases).
    * Extract the contents to a folder of your choice (e.g. `/usr/local/bin/codeql` or similar).
@@ -168,6 +163,7 @@ When deploying to a public VPS or OpenStack instance:
 │   ├── test_api_smoke.py       # API smoke test validation
 │   └── test_dashboard.py       # Dashboard API endpoint tests
 ├── agentic_security_platform.py# Core engine, AST parser, and folder traverser
+├── cwe_helper.py               # Dynamic offline MITRE CWE database resolution and mapping
 ├── app.py                      # FastAPI server runtime and controller endpoints
 ├── scanners.py                 # Subprocess bindings for Bandit and CodeQL
 ├── deploy.sh                   # Helper script for Docker image packaging
