@@ -118,18 +118,37 @@ function updateFindingsList(findings) {
         return;
     }
 
-    const html = findings.map(finding => `
+    const html = findings.map(finding => {
+        let displayPath = finding.file || 'N/A';
+        if (displayPath !== 'N/A' && displayPath.includes('/')) {
+            const parts = displayPath.split('/');
+            displayPath = parts.slice(-3).join('/');
+        }
+        
+        return `
         <div class="finding-item ${finding.severity}">
             <div>
                 <div class="finding-rule">${finding.rule || 'Unknown'}</div>
                 <div class="finding-cwe">${finding.cwe || 'N/A'}</div>
+                <div class="finding-description" style="font-size: 13px; color: var(--text-light); margin-top: 6px; font-weight: 500;">
+                    ${finding.description || ''}
+                </div>
             </div>
-            <div></div>
+            <div style="font-size: 13px; line-height: 1.5;">
+                <div style="color: var(--text); word-break: break-all;">
+                    <strong>File:</strong> <span class="finding-path" title="${finding.file || ''}">${displayPath}</span>
+                </div>
+                ${finding.line ? `
+                <div style="color: var(--text-light); margin-top: 3px;">
+                    <strong>Line:</strong> ${finding.line}
+                </div>` : ''}
+            </div>
             <div class="finding-severity ${finding.severity}">
                 ${finding.severity.toUpperCase()}
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 
     container.innerHTML = html;
 }

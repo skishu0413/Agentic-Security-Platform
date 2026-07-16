@@ -256,16 +256,59 @@ def evaluate_source_code(
     platform_instance: AgenticSecurityPlatform | None = None
 ) -> dict[str, Any]:
     findings = []
-    lower = source_text.lower()
+    lines = source_text.splitlines()
 
-    if "subprocess" in lower and "shell=true" in lower:
-        findings.append({"rule": "shell-injection", "cwe": "CWE-78", "severity": "high", "description": "subprocess called with shell=True"})
-    if "eval(" in lower or "exec(" in lower:
-        findings.append({"rule": "dynamic-exec", "cwe": "CWE-94", "severity": "high", "description": "eval or exec statement used"})
-    if "requests." in lower and "verify=False" in lower:
-        findings.append({"rule": "ssl-verification-bypass", "cwe": "CWE-295", "severity": "medium", "description": "requests call with verify=False"})
-    if "pickle" in lower or "yaml.load" in lower:
-        findings.append({"rule": "unsafe-deserialization", "cwe": "CWE-502", "severity": "high", "description": "unsafe deserialization using pickle or yaml.load"})
+    # Heuristic 1: shell-injection
+    for i, line in enumerate(lines, 1):
+        l = line.lower()
+        if "subprocess" in l and "shell=true" in l:
+            findings.append({
+                "file": source_path,
+                "line": i,
+                "rule": "shell-injection",
+                "cwe": "CWE-78",
+                "severity": "high",
+                "description": "subprocess called with shell=True"
+            })
+
+    # Heuristic 2: dynamic-exec
+    for i, line in enumerate(lines, 1):
+        l = line.lower()
+        if "eval(" in l or "exec(" in l:
+            findings.append({
+                "file": source_path,
+                "line": i,
+                "rule": "dynamic-exec",
+                "cwe": "CWE-94",
+                "severity": "high",
+                "description": "eval or exec statement used"
+            })
+
+    # Heuristic 3: ssl-verification-bypass
+    for i, line in enumerate(lines, 1):
+        l = line.lower()
+        if "requests" in l and "verify=false" in l:
+            findings.append({
+                "file": source_path,
+                "line": i,
+                "rule": "ssl-verification-bypass",
+                "cwe": "CWE-295",
+                "severity": "medium",
+                "description": "requests call with verify=False"
+            })
+
+    # Heuristic 4: unsafe-deserialization
+    for i, line in enumerate(lines, 1):
+        l = line.lower()
+        if "pickle" in l or "yaml.load" in l:
+            findings.append({
+                "file": source_path,
+                "line": i,
+                "rule": "unsafe-deserialization",
+                "cwe": "CWE-502",
+                "severity": "high",
+                "description": "unsafe deserialization using pickle or yaml.load"
+            })
 
     # Run AI analysis
     if enabled_providers and platform_instance:
@@ -281,6 +324,8 @@ def evaluate_source_code(
             for provider, ai_findings in results:
                 for f in ai_findings:
                     findings.append({
+                        "file": source_path,
+                        "line": f.get("line"),
                         "rule": f.get("rule", f"ai-{provider}"),
                         "cwe": f.get("cwe", "CWE-999"),
                         "severity": f.get("severity", "medium").lower(),
@@ -362,11 +407,24 @@ def review_directory(
     codeql_results = scanner.run_codeql()
     if bandit_results:
         findings.extend(
-            {"rule": result.get("test_id", "bandit"), "cwe": "CWE-77", "severity": "medium", "description": "Bandit detected issue"}
+            {
+                "file": result.get("filename", ""),
+                "line": result.get("line_number"),
+                "rule": result.get("test_id", "bandit"),
+                "cwe": "CWE-77",
+                "severity": "medium",
+                "description": result.get("issue_text", "Bandit detected issue")
+            }
             for result in bandit_results
         )
     if codeql_results:
-        findings.append({"rule": "codeql-integrated", "cwe": "CWE-79", "severity": "medium", "description": "CodeQL semantic vulnerability check complete"})
+        findings.append({
+            "file": str(root),
+            "rule": "codeql-integrated",
+            "cwe": "CWE-79",
+            "severity": "medium",
+            "description": "CodeQL semantic vulnerability check complete"
+        })
 
     providers_status = {}
     if platform_instance:
