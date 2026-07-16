@@ -5,6 +5,7 @@ warnings.filterwarnings("ignore", message=".*urllib3 v2.*")
 
 import json
 import os
+import yaml
 from pathlib import Path
 from typing import Any
 
@@ -33,18 +34,32 @@ def load_env_file() -> None:
 # Load configuration
 load_env_file()
 
-SUPPORTED_EXTENSIONS = {
-    ".py", ".pyw", ".js", ".mjs", ".cjs", ".ts", ".jsx", ".tsx",
-    ".go", ".java", ".rb", ".php", ".c", ".cpp", ".cc", ".h", ".hpp",
-    ".cs", ".sh", ".bash", ".rs", ".swift", ".kt", ".kts", ".sql"
-}
-IGNORE_DIRS = {
-    ".git", ".github", ".venv", "venv", "env", "node_modules",
-    "__pycache__", ".pytest_cache", ".codeql", ".idea", ".vscode",
-    "dist", "build", "assets", "out", "target", "bin", "obj",
-    ".next", ".nuxt", ".cache", "coverage", "htmlcov"
-}
-MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024  # 10 MB limit
+# Configurations loaded dynamically from config.yaml
+SUPPORTED_EXTENSIONS: set[str] = set()
+IGNORE_DIRS: set[str] = set()
+MAX_FILE_SIZE_BYTES: int = 0
+
+# Load configurations from config.yaml if exists
+config_path = Path(__file__).parent / "config.yaml"
+if config_path.exists():
+    try:
+        config_data = yaml.safe_load(config_path.read_text(encoding="utf-8")) or {}
+        if "supported_extensions" in config_data:
+            val = config_data["supported_extensions"]
+            if isinstance(val, str):
+                SUPPORTED_EXTENSIONS = {ext.strip() for ext in val.split(",") if ext.strip()}
+            elif isinstance(val, list):
+                SUPPORTED_EXTENSIONS = set(val)
+        if "ignore_dirs" in config_data:
+            val = config_data["ignore_dirs"]
+            if isinstance(val, str):
+                IGNORE_DIRS = {d.strip() for d in val.split(",") if d.strip()}
+            elif isinstance(val, list):
+                IGNORE_DIRS = set(val)
+        if "max_file_size_mb" in config_data:
+            MAX_FILE_SIZE_BYTES = int(config_data["max_file_size_mb"]) * 1024 * 1024
+    except Exception as e:
+        print(f"Error loading config.yaml: {e}")
 
 
 def check_provider_configured(provider: str) -> bool:

@@ -1,0 +1,10 @@
+# Agentic Security Platform Configuration
+
+# Supported file extensions to walk/scan (comma-separated list)
+supported_extensions: ".py, .pyw, .js, .mjs, .cjs, .ts, .jsx, .tsx, .go, .java, .rb, .php, .c, .cpp, .cc, .h, .hpp, .cs, .sh, .bash, .rs, .swift, .kt, .kts, .sql"
+
+# Directories ignored by the scanner walker (comma-separated list)
+ignore_dirs: ".git, .github, .venv, venv, env, node_modules, __pycache__, .pytest_cache, .codeql, .idea, .vscode, dist, build, assets, out, target, bin, obj, .next, .nuxt, .cache, coverage, htmlcov"
+
+# Maximum file size limit to prevent memory bloat (in megabytes)
+max_file_size_mb: 10
