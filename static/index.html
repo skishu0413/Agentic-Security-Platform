@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agentic Security Platform - Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=1.0.5">
+    <link rel="stylesheet" href="/static/style.css?v=1.0.7">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -178,10 +178,46 @@
                     <h2>Run Security Scan</h2>
                     <form id="scan-form" class="scan-form">
                         <div class="form-group">
-                            <label for="source-path">Source Path</label>
-                            <input type="text" id="source-path" name="source_path" placeholder="e.g., /path/to/project" required>
+                            <label style="font-weight: 600; color: #475569; display: block; margin-bottom: 6px;">Source</label>
+                            <div style="display: flex; gap: 24px; margin-top: 5px; margin-bottom: 8px;">
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: #0f172a; font-weight: 500;">
+                                    <input type="radio" name="source_type" value="local" checked id="source-type-local" style="cursor: pointer; accent-color: #2563eb; width: 16px; height: 16px;"> Local directory
+                                </label>
+                                <label style="display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: #0f172a; font-weight: 500;">
+                                    <input type="radio" name="source_type" value="git" id="source-type-git" style="cursor: pointer; accent-color: #2563eb; width: 16px; height: 16px;"> GitHub repository
+                                </label>
+                            </div>
                         </div>
-                        <button type="submit" class="btn-primary">Start Scan</button>
+
+                        <!-- Local Directory Input -->
+                        <div class="form-group" id="local-source-group">
+                            <label for="source-path" style="font-weight: 600; color: #475569;">Source Path</label>
+                            <input type="text" id="source-path" name="source_path" placeholder="e.g., /path/to/project" style="margin-top: 4px;" required>
+                        </div>
+
+                        <!-- GitHub Repository Inputs -->
+                        <div id="github-source-group" style="display: none; gap: 15px; margin-bottom: 15px;">
+                            <div class="form-group" style="flex: 1; margin-bottom: 0;">
+                                <label for="repo-url" style="font-weight: 600; color: #475569;">Repository URL</label>
+                                <input type="text" id="repo-url" name="repo_url" placeholder="e.g., https://github.com/org/project" style="margin-top: 4px; width: 100%;">
+                            </div>
+                            <div class="form-group" style="width: 150px; margin-bottom: 0;">
+                                <label for="branch" style="font-weight: 600; color: #475569;">Branch</label>
+                                <input type="text" id="branch" name="branch" placeholder="main" value="main" style="margin-top: 4px; width: 100%;">
+                            </div>
+                        </div>
+
+                        <!-- Scan Profile Dropdown -->
+                        <div class="form-group" style="margin-top: 12px;">
+                            <label for="scan-profile" style="font-weight: 600; color: #475569;">Scan Profile</label>
+                            <select id="scan-profile" name="scan_profile" style="width: 100%; padding: 10px 12px; border-radius: 6px; border: 1px solid #cbd5e1; background: #fff; color: #0f172a; font-size: 14px; font-weight: 500; cursor: pointer; outline: none; margin-top: 4px; box-sizing: border-box;">
+                                <option value="comprehensive">Comprehensive (AST + Bandit + CodeQL + AI Auditing)</option>
+                                <option value="local_only">Local Static Only (AST + Bandit + CodeQL)</option>
+                                <option value="ast_only">Fast AST Heuristics Only</option>
+                            </select>
+                        </div>
+
+                        <button type="submit" class="btn-primary" style="margin-top: 15px; width: 100%;">Start Scan</button>
                     </form>
                     <div id="scan-progress-container" class="scan-progress-container">
                         <div class="progress-status-text" id="progress-status-text">Preparing scan...</div>
@@ -197,6 +233,6 @@
         </div>
     </div>
 
-    <script src="/static/dashboard.js?v=1.0.5"></script>
+    <script src="/static/dashboard.js?v=1.0.7"></script>
 </body>
 </html>

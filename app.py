@@ -42,13 +42,46 @@ last_scan_result: dict[str, Any] = {
 
 
 class ReviewRequest(BaseModel):
-    source_path: str
+    source_type: str = "local"  # "local" or "git"
+    source_path: Optional[str] = None
+    repo_url: Optional[str] = None
+    branch: Optional[str] = "main"
+    scan_profile: str = "comprehensive"  # "comprehensive", "local_only", "ast_only"
     providers: Optional[List[str]] = None
 
 
 class ReviewResponse(BaseModel):
     status: str
     report: dict[str, Any]
+
+
+from sandbox import EphemeralSandbox
+
+def run_request_scan(req: ReviewRequest) -> dict[str, Any]:
+    sandbox = EphemeralSandbox()
+    if req.source_type == "git":
+        if not req.repo_url:
+            raise HTTPException(status_code=400, detail="repo_url is required for git source type")
+        report = sandbox.run_git_scan(
+            repo_url=req.repo_url,
+            branch=req.branch or "main",
+            enabled_providers=req.providers,
+            platform_instance=platform,
+            scan_profile=req.scan_profile
+        )
+    else:
+        if not req.source_path:
+            raise HTTPException(status_code=400, detail="source_path is required for local source type")
+        path = Path(req.source_path)
+        if not path.exists():
+            raise HTTPException(status_code=404, detail="source path not found")
+        report = sandbox.run_scan(
+            source_path=str(path),
+            enabled_providers=req.providers,
+            platform_instance=platform,
+            scan_profile=req.scan_profile
+        )
+    return report
 
 
 @app.get("/health")
@@ -58,10 +91,7 @@ def health() -> dict[str, str]:
 
 @app.post("/review", response_model=ReviewResponse)
 def review(req: ReviewRequest) -> ReviewResponse:
-    path = Path(req.source_path)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="source file not found")
-    report = platform.run_review(str(path), enabled_providers=req.providers)
+    report = run_request_scan(req)
     return ReviewResponse(status="ok", report=report)
 
 
@@ -83,15 +113,13 @@ def export_dashboard_stats():
 @app.post("/api/dashboard/scan")
 def dashboard_scan(req: ReviewRequest) -> dict[str, Any]:
     global last_scan_result
-    path = Path(req.source_path)
-    if not path.exists():
-        raise HTTPException(status_code=404, detail="source path not found")
-    report = platform.run_review(str(path), enabled_providers=req.providers)
+    report = run_request_scan(req)
     last_scan_result = report
     return {
         "status": "ok",
         "findings_count": report["summary"]["finding_count"],
         "scanned_files": report["summary"].get("scanned_files", 0),
+        "scan_id": report.get("scan_id"),
     }
 
 

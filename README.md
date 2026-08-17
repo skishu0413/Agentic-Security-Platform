@@ -12,6 +12,9 @@ A professional evaluation and security audit platform designed for checking sour
 
 ## 🚀 Key Features
 
+*   **🔒 Ephemeral Sandbox Isolation**: Executes scans in an isolated, resource-constrained container/temporary sandbox (Docker with network disabled, CPU/RAM limits, or host-isolated temp workspaces). Source code is immediately wiped, ensuring raw files never persist.
+*   **🐙 GitHub Repository Scanning**: Directly clones and scans remote repositories in the sandbox using shallow git checkouts. Cloned files are completely wiped post-scan.
+*   **🏷️ Metadata Isolation & Fingerprinting**: Generates SHA-256 deterministic hashes for findings and maps vulnerabilities to tailored remediation advice, without persisting source code.
 *   **🔍 AST-Based Heuristics**: Immediate detection of risky patterns like shell injection, dynamic execution (`eval`/`exec`), weak SSL verification, and unsafe deserialization.
 *   **🔗 Deep Security Integrations**: Seamlessly wraps and merges results from **Bandit** (Python static analysis) and **CodeQL** (semantic analysis database creation).
 *   **🤖 Multi-Provider AI Scanning**: Real-time status reporting and true AI-powered security auditing using **OpenAI**, **Anthropic Claude**, local **Ollama**, or **Cursor** fallbacks.

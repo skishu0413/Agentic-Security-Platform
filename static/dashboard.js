@@ -159,21 +159,38 @@ function updateFindingsList(findings) {
     const html = filteredFindings.map(finding => {
         const displayPath = finding.file || 'N/A';
         const sev = (finding.severity || 'low').toLowerCase();
+        const fingerprint = finding.fingerprint ? finding.fingerprint.substring(0, 12) : 'N/A';
         
         return `
         <div class="finding-item ${sev}">
-            <div>
-                <div class="finding-rule">${finding.rule || 'Unknown'}</div>
-                <div class="finding-cwe">${finding.cwe || 'N/A'}${finding.cwe_title ? `: ${finding.cwe_title}` : ''}</div>
+            <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                    <span class="finding-rule">${finding.rule || 'Unknown'}</span>
+                    <span class="finding-cwe" style="background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                        ${finding.cwe || 'N/A'} (CVE: ${finding.cve || 'N/A'})
+                    </span>
+                    <span style="font-family: monospace; font-size: 10px; color: #94a3b8; background: #fafafa; padding: 2px 6px; border: 1px dashed #e2e8f0; border-radius: 4px;" title="Fingerprint: ${finding.fingerprint || 'N/A'}">
+                        FP: ${fingerprint}...
+                    </span>
+                </div>
+                <div style="margin-top: 4px; font-size: 12px; font-weight: 600; color: #475569;">
+                    ${finding.cwe_title || ''}
+                </div>
                 <div class="finding-description" style="font-size: 13px; color: var(--text-light); margin-top: 6px; font-weight: 500;">
                     ${finding.description || ''}
                 </div>
+                
+                <!-- Remediation Guidelines -->
+                <div class="remediation-recommendation" style="font-size: 12px; color: #0f766e; background: #f0fdfa; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccfbf1; margin-top: 10px; line-height: 1.4;">
+                    <strong>🔧 Remediation:</strong> ${finding.remediation || 'Perform standard sanitization.'}
+                </div>
+
                 ${finding.cwe_description ? `
-                <div class="cwe-description" style="font-size: 11px; font-style: italic; color: #888; margin-top: 4px; line-height: 1.4;">
+                <div class="cwe-description" style="font-size: 11px; font-style: italic; color: #888; margin-top: 8px; line-height: 1.4;">
                     <strong>MITRE CWE Detail:</strong> ${finding.cwe_description}
                 </div>` : ''}
             </div>
-            <div style="font-size: 13px; line-height: 1.5;">
+            <div style="font-size: 13px; line-height: 1.5; min-width: 180px; max-width: 250px;">
                 <div style="color: var(--text); word-break: break-all;">
                     <strong>File:</strong> <span class="finding-path" title="${finding.file || ''}">${displayPath}</span>
                 </div>
@@ -250,11 +267,38 @@ document.querySelectorAll('.nav-item').forEach(item => {
     });
 });
 
+// Toggle source fields based on radio selection
+document.querySelectorAll('input[name="source_type"]').forEach(radio => {
+    radio.addEventListener('change', (e) => {
+        const localGroup = document.getElementById('local-source-group');
+        const gitGroup = document.getElementById('github-source-group');
+        const sourcePath = document.getElementById('source-path');
+        const repoUrl = document.getElementById('repo-url');
+        
+        if (e.target.value === 'git') {
+            localGroup.style.display = 'none';
+            gitGroup.style.display = 'flex';
+            sourcePath.removeAttribute('required');
+            repoUrl.setAttribute('required', 'true');
+        } else {
+            localGroup.style.display = 'block';
+            gitGroup.style.display = 'none';
+            sourcePath.setAttribute('required', 'true');
+            repoUrl.removeAttribute('required');
+        }
+    });
+});
+
 // Scan form handling
 document.getElementById('scan-form').addEventListener('submit', async (e) => {
     e.preventDefault();
 
+    const sourceType = document.querySelector('input[name="source_type"]:checked').value;
     const sourcePath = document.getElementById('source-path').value;
+    const repoUrl = document.getElementById('repo-url').value;
+    const branch = document.getElementById('branch').value;
+    const scanProfile = document.getElementById('scan-profile').value;
+
     const resultEl = document.getElementById('scan-result');
     const progressContainer = document.getElementById('scan-progress-container');
     const progressBarFill = document.getElementById('progress-bar-fill');
@@ -277,10 +321,11 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
     
     // Configure progress steps (texts only)
     const steps = [
-        { minPct: 0, maxPct: 25, activeText: '🔍 Analyzing built-in AST heuristics...' },
-        { minPct: 25, maxPct: 50, activeText: '🐍 Invoking Bandit Python static analyzer...' },
-        { minPct: 50, maxPct: 75, activeText: '⚙️ Initializing CodeQL database check...' },
-        { minPct: 75, maxPct: 95, activeText: '📁 Formatting and compiling JSON security report...' }
+        { minPct: 0, maxPct: 20, activeText: '📦 Creating isolated ephemeral sandbox...' },
+        { minPct: 20, maxPct: 40, activeText: '📁 Copying repository source code to sandbox...' },
+        { minPct: 40, maxPct: 60, activeText: '🔒 Disabling sandbox network & applying resource limits...' },
+        { minPct: 60, maxPct: 85, activeText: '⚙️ Running static analysis (Bandit & AST) inside sandbox...' },
+        { minPct: 85, maxPct: 95, activeText: '📥 Extracting structured findings & wiping sandbox...' }
     ];
 
     let currentPct = 0;
@@ -320,10 +365,19 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
     });
 
     try {
+        const payload = {
+            source_type: sourceType,
+            source_path: sourcePath,
+            repo_url: repoUrl,
+            branch: branch,
+            scan_profile: scanProfile,
+            providers: providers
+        };
+
         const response = await fetch('/api/dashboard/scan', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ source_path: sourcePath, providers: providers }),
+            body: JSON.stringify(payload),
         });
 
         const data = await response.json();
@@ -344,6 +398,9 @@ document.getElementById('scan-form').addEventListener('submit', async (e) => {
             resultEl.className = 'scan-result show success';
             resultEl.innerHTML = `
                 <h3>✓ Scan Completed Successfully</h3>
+                <div style="font-size: 13px; color: #64748b; margin-top: 8px; margin-bottom: 12px; background: #f8fafc; padding: 6px 12px; border-radius: 4px; border: 1px solid #e2e8f0; display: inline-block;">
+                    <strong>Scan ID:</strong> <span style="font-family: monospace;">${data.scan_id || 'N/A'}</span> &nbsp;|&nbsp; <strong>Sandbox:</strong> Destroyed
+                </div>
                 <div style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
                     <div style="background: white; padding: 12px; border-radius: 6px; border: 1px solid #bbf7d0; text-align: center;">
                         <span style="font-size: 20px; display: block; margin-bottom: 4px;">⚠️</span>

@@ -117,10 +117,15 @@ class AgenticSecurityPlatform:
             }
         return status_dict
 
-    def run_review(self, source_path: str, enabled_providers: list[str] | None = None) -> dict[str, Any]:
+    def run_review(self, source_path: str, enabled_providers: list[str] | None = None, use_sandbox: bool = True, scan_profile: str = "comprehensive") -> dict[str, Any]:
+        if use_sandbox:
+            from sandbox import EphemeralSandbox
+            sandbox = EphemeralSandbox()
+            return sandbox.run_scan(source_path, enabled_providers, platform_instance=self, scan_profile=scan_profile)
+
         path = Path(source_path)
         if path.is_dir():
-            report = review_directory(path, enabled_providers, self)
+            report = review_directory(path, enabled_providers, self, scan_profile=scan_profile)
         else:
             try:
                 if path.stat().st_size > MAX_FILE_SIZE_BYTES:
@@ -138,7 +143,7 @@ class AgenticSecurityPlatform:
                     }
                 else:
                     source_text = path.read_text(encoding="utf-8", errors="ignore")
-                    report = evaluate_source_code(source_text, source_path, enabled_providers, self)
+                    report = evaluate_source_code(source_text, source_path, enabled_providers, self, scan_profile=scan_profile)
             except Exception as e:
                 report = {
                     "source_path": source_path,
@@ -286,33 +291,35 @@ def evaluate_source_code(
     source_path: str,
     enabled_providers: list[str] | None = None,
     platform_instance: AgenticSecurityPlatform | None = None,
-    is_dir_scan: bool = False
+    is_dir_scan: bool = False,
+    scan_profile: str = "comprehensive"
 ) -> dict[str, Any]:
     findings = []
     lines = source_text.splitlines()
 
-    # Run Bandit local static checks dynamically on this file
-    if not is_dir_scan and Path(source_path).exists() and Path(source_path).is_file():
-        try:
-            scanner = ScannerIntegration(source_path)
-            bandit_results = scanner.run_bandit()
-            if bandit_results:
-                from cwe_helper import map_bandit_cwe
-                for result in bandit_results:
-                    cwe_id = map_bandit_cwe(result.get("test_id", ""), result.get("issue_cwe"))
-                    findings.append({
-                        "file": source_path,
-                        "line": result.get("line_number"),
-                        "rule": result.get("test_id", "bandit"),
-                        "cwe": cwe_id,
-                        "severity": result.get("issue_severity", "medium").lower(),
-                        "description": result.get("issue_text", "Bandit detected issue")
-                    })
-        except Exception:
-            pass
+    # Run Bandit local static checks dynamically on this file (skip if ast_only)
+    if scan_profile in ("comprehensive", "local_only"):
+        if not is_dir_scan and Path(source_path).exists() and Path(source_path).is_file():
+            try:
+                scanner = ScannerIntegration(source_path)
+                bandit_results = scanner.run_bandit()
+                if bandit_results:
+                    from cwe_helper import map_bandit_cwe
+                    for result in bandit_results:
+                        cwe_id = map_bandit_cwe(result.get("test_id", ""), result.get("issue_cwe"))
+                        findings.append({
+                            "file": source_path,
+                            "line": result.get("line_number"),
+                            "rule": result.get("test_id", "bandit"),
+                            "cwe": cwe_id,
+                            "severity": result.get("issue_severity", "medium").lower(),
+                            "description": result.get("issue_text", "Bandit detected issue")
+                        })
+            except Exception:
+                pass
 
-    # Run AI analysis
-    if enabled_providers and platform_instance:
+    # Run AI analysis (only if profile is comprehensive)
+    if scan_profile == "comprehensive" and enabled_providers and platform_instance:
         from concurrent.futures import ThreadPoolExecutor
         configured_providers = [p for p in enabled_providers if check_provider_configured(p)]
         if configured_providers:
@@ -371,16 +378,17 @@ def evaluate_source_code(
 def review_directory(
     root: Path,
     enabled_providers: list[str] | None = None,
-    platform_instance: AgenticSecurityPlatform | None = None
+    platform_instance: AgenticSecurityPlatform | None = None,
+    scan_profile: str = "comprehensive"
 ) -> dict[str, Any]:
     findings: list[dict[str, Any]] = []
     scanned_files = []
     warnings = []
-    scanner = ScannerIntegration(root)
 
     # Throttle AI scans
     max_ai_files = 5
     ai_files_scanned = 0
+    run_ai_on_files = (scan_profile == "comprehensive")
 
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
@@ -398,7 +406,7 @@ def review_directory(
                     source_text = path.read_text(encoding="utf-8", errors="ignore")
                     
                     run_ai = False
-                    if enabled_providers and platform_instance and ai_files_scanned < max_ai_files:
+                    if run_ai_on_files and enabled_providers and platform_instance and ai_files_scanned < max_ai_files:
                         run_ai = True
                         ai_files_scanned += 1
                         
@@ -407,7 +415,8 @@ def review_directory(
                         str(path),
                         enabled_providers if run_ai else None,
                         platform_instance,
-                        is_dir_scan=True
+                        is_dir_scan=True,
+                        scan_profile=scan_profile
                     )
                     findings.extend(file_result["findings"])
                 except PermissionError:
@@ -415,8 +424,13 @@ def review_directory(
                 except Exception as e:
                     warnings.append(f"Skipped {path.name} (error reading file: {str(e)})")
 
-    bandit_results = scanner.run_bandit()
-    codeql_results = scanner.run_codeql()
+    bandit_results = []
+    codeql_results = []
+    if scan_profile in ("comprehensive", "local_only"):
+        scanner = ScannerIntegration(root)
+        bandit_results = scanner.run_bandit()
+        codeql_results = scanner.run_codeql()
+
     if bandit_results:
         from cwe_helper import map_bandit_cwe
         for result in bandit_results:
@@ -494,9 +508,11 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Evaluate source code for risky patterns")
     parser.add_argument("source", help="Path to the source file to review")
     parser.add_argument("--output", default="report.json", help="Path for the JSON report")
+    parser.add_argument("--no-sandbox", action="store_true", help="Disable ephemeral sandbox isolation")
+    parser.add_argument("--scan-profile", default="comprehensive", choices=["comprehensive", "local_only", "ast_only"], help="Scan profile to use")
     args = parser.parse_args()
 
     platform = AgenticSecurityPlatform()
-    report = platform.run_review(args.source)
+    report = platform.run_review(args.source, use_sandbox=not args.no_sandbox, scan_profile=args.scan_profile)
     platform.export_report(report, args.output)
     print(json.dumps(report, indent=2))
