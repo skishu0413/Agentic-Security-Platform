@@ -3,6 +3,10 @@ from __future__ import annotations
 import warnings
 warnings.filterwarnings("ignore", message=".*urllib3 v2.*")
 
+import logging
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("httpcore").setLevel(logging.WARNING)
+
 import json
 import os
 import signal
@@ -14,9 +18,17 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
+from contextlib import asynccontextmanager
 from agentic_security_platform import AgenticSecurityPlatform, check_provider_configured
 
-app = FastAPI(title="Agentic Security Platform", version="0.1.0")
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    import logging
+    for logger_name in ["httpx", "httpcore"]:
+        logging.getLogger(logger_name).setLevel(logging.WARNING)
+    yield
+
+app = FastAPI(title="Agentic Security Platform", version="0.1.0", lifespan=lifespan)
 platform = AgenticSecurityPlatform()
 
 @app.middleware("http")

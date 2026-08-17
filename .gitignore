@@ -5,3 +5,4 @@ report.json
 .agents/
 walkthrough.md
 .env
+.DS_Store
