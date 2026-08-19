@@ -122,6 +122,34 @@ def export_dashboard_stats():
     )
 
 
+@app.get("/api/dashboard/sbom")
+def export_sbom(format: str = "cyclonedx"):
+    if not last_scan_result:
+        raise HTTPException(status_code=400, detail="No scan report available. Run a scan first.")
+    
+    repo_name = "application"
+    source_path = last_scan_result.get("source_path", "")
+    if source_path:
+        repo_name = Path(source_path).name
+    
+    dependencies = last_scan_result.get("dependencies", [])
+    
+    import sbom_generator
+    if format.lower() == "spdx":
+        sbom = sbom_generator.generate_spdx(repo_name, dependencies)
+        filename = f"{repo_name}_sbom_spdx.json"
+    else:
+        sbom = sbom_generator.generate_cyclonedx(repo_name, dependencies)
+        filename = f"{repo_name}_sbom_cyclonedx.json"
+        
+    formatted_json = json.dumps(sbom, indent=2)
+    return Response(
+        content=formatted_json,
+        media_type="application/json",
+        headers={"Content-Disposition": f"attachment; filename={filename}"}
+    )
+
+
 @app.post("/api/dashboard/scan")
 def dashboard_scan(req: ReviewRequest) -> dict[str, Any]:
     global last_scan_result

@@ -14,6 +14,10 @@ A professional evaluation and security audit platform designed for checking sour
 
 *   **🔒 Ephemeral Sandbox Isolation**: Executes scans in an isolated, resource-constrained container/temporary sandbox (Docker with network disabled, CPU/RAM limits, or host-isolated temp workspaces). Source code is immediately wiped, ensuring raw files never persist.
 *   **🐙 GitHub Repository Scanning**: Directly clones and scans remote repositories in the sandbox using shallow git checkouts. Cloned files are completely wiped post-scan.
+*   **🔑 Automated Secret Scanning**: Integrates Gitleaks (or runs a high-fidelity Regex + Entropy fallback engine) to detect exposed access tokens, private keys, database URLs, and API keys. Findings are automatically masked (e.g. `ghp_************`) under a Critical severity classification (CWE-798).
+*   **📦 Software Composition Analysis (SCA)**: Inspects project dependencies across Python (`requirements.txt`/`poetry.lock`), Node.js (`package-lock.json`/`yarn.lock`), Java (`pom.xml`), Go (`go.mod`), Rust (`Cargo.lock`), Ruby (`Gemfile.lock`), and PHP (`composer.lock`). Integrates OSV-Scanner/Trivy or falls back to a semantic constraint checker to flag out-of-date or vulnerable libraries (CWE-1104).
+*   **📜 SBOM (Software Bill of Materials) Generation**: Automatically compiles and exports standard inventory maps of repository dependencies in industry-standard formats: **CycloneDX (JSON v1.5)** and **SPDX (JSON v2.3)**, fully populated with Package URLs (purl).
+*   **🛡️ IaC & Configuration Scanning**: Audits Dockerfiles, docker-compose, Terraform configurations (`*.tf`), Kubernetes manifests, Helm Charts, CloudFormation templates, and CI/CD pipelines (GitHub Actions workflows, GitLab CI, and Jenkinsfiles). Flags container breakout risks (privileged mode, root execution user, host socket mounts), exposed S3 buckets, open security groups, and excessive write permissions (CWE-250, CWE-284).
 *   **🏷️ Metadata Isolation & Fingerprinting**: Generates SHA-256 deterministic hashes for findings and maps vulnerabilities to tailored remediation advice, without persisting source code.
 *   **🔍 AST-Based Heuristics**: Immediate detection of risky patterns like shell injection, dynamic execution (`eval`/`exec`), weak SSL verification, and unsafe deserialization.
 *   **🔗 Deep Security Integrations**: Seamlessly wraps and merges results from **Bandit** (Python static analysis) and **CodeQL** (semantic analysis database creation).
@@ -166,9 +170,10 @@ When deploying to a public VPS or OpenStack instance:
 │   ├── test_api_smoke.py       # API smoke test validation
 │   └── test_dashboard.py       # Dashboard API endpoint tests
 ├── agentic_security_platform.py# Core engine, AST parser, and folder traverser
+├── sbom_generator.py           # CycloneDX and SPDX format SBOM serializers
 ├── cwe_helper.py               # Dynamic offline MITRE CWE database resolution and mapping
 ├── app.py                      # FastAPI server runtime and controller endpoints
-├── scanners.py                 # Subprocess bindings for Bandit and CodeQL
+├── scanners.py                 # Subprocess bindings for Bandit, CodeQL, Secrets, and SCA
 ├── deploy.sh                   # Helper script for Docker image packaging
 ├── start.sh                    # Backend server launch script
 ├── Dockerfile                  # Platform container deployment definition

@@ -56,7 +56,8 @@ def get_remediation(cwe_id: str) -> str:
         "CWE-295": "Ensure SSL certificate verification is enabled (do not set verify=False in requests or equivalent connection libraries).",
         "CWE-502": "Do not deserialize untrusted data using standard library pickle or yaml.load. Use secure formats like JSON, or yaml.safe_load.",
         "CWE-77": "Sanitize all parameters passed to external commands. Avoid dynamic string building; use parameterized executions or API-level boundaries.",
-        "CWE-79": "Use contextual auto-escaping templating engines (e.g., Jinja2, React) and sanitize user inputs before rendering them on UI web pages."
+        "CWE-79": "Use contextual auto-escaping templating engines (e.g., Jinja2, React) and sanitize user inputs before rendering them on UI web pages.",
+        "CWE-798": "Never hardcode sensitive credentials, access keys, or API tokens. Utilize secure environment variables, encrypted vault services (e.g., AWS Secrets Manager, GCP Secret Manager), or externalized configuration."
     }
     return remediations.get(cwe_id, "Perform strict input validation, enforce boundary/type checking, and implement strict output encoding/sanitization for all external inputs.")
 

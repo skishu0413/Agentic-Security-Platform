@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agentic Security Platform - Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=1.0.7">
+    <link rel="stylesheet" href="/static/style.css?v=1.0.9">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -21,10 +21,17 @@
     <div class="main-content">
         <header class="header">
             <h1>Security Dashboard</h1>
-            <div class="header-info">
+            <div class="header-info" style="display: flex; align-items: center; gap: 10px;">
                 <span id="status" class="status-badge">Loading...</span>
                 <span id="last-update" class="timestamp">Last update: --:--:--</span>
                 <button id="export-btn" class="btn-export" style="display: none;">Export Report</button>
+                <div id="sbom-export-container" style="display: none; position: relative;">
+                    <button id="export-sbom-btn" class="btn-export" style="background: #0f766e; border-color: #0f766e;">Export SBOM ▾</button>
+                    <div id="sbom-dropdown" style="display: none; position: absolute; right: 0; top: 100%; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 100; min-width: 140px; margin-top: 4px;">
+                        <a href="#" id="export-sbom-cyclonedx" class="sbom-dropdown-link" style="border-bottom: 1px solid #f1f5f9;">CycloneDX JSON</a>
+                        <a href="#" id="export-sbom-spdx" class="sbom-dropdown-link">SPDX JSON</a>
+                    </div>
+                </div>
             </div>
         </header>
 
@@ -55,6 +62,10 @@
                             </div>
                             <div class="severity-filters" style="display: flex; flex-direction: column; gap: 10px; min-width: 140px;">
                                 <label style="font-weight: bold; font-size: 11px; color: var(--text-light); text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 2px;">Filter Severity</label>
+                                <button id="filter-critical" class="filter-btn active" data-severity="critical" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; border: 1px solid #b91c1c; background: #fef2f2; color: #991b1b; font-weight: 700; cursor: pointer; font-size: 13px; transition: all 0.2s;">
+                                    <span style="display: flex; align-items: center; gap: 6px;">💥 Critical</span>
+                                    <span id="filter-critical-count">0</span>
+                                </button>
                                 <button id="filter-high" class="filter-btn active" data-severity="high" style="display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; border-radius: 6px; border: 1px solid #ef4444; background: #fee2e2; color: #b91c1c; font-weight: 600; cursor: pointer; font-size: 13px; transition: all 0.2s;">
                                     <span style="display: flex; align-items: center; gap: 6px;">🔴 High</span>
                                     <span id="filter-high-count">0</span>
@@ -233,6 +244,6 @@
         </div>
     </div>
 
-    <script src="/static/dashboard.js?v=1.0.7"></script>
+    <script src="/static/dashboard.js?v=1.0.9"></script>
 </body>
 </html>

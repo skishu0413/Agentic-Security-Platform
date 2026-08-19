@@ -340,6 +340,36 @@ def evaluate_source_code(
                         "description": f.get("description", "AI detected security vulnerability")
                     })
 
+    # Run SecretScanner if scanning a single file directly
+    if not is_dir_scan:
+        try:
+            from scanners import SecretScanner
+            scanner = SecretScanner(source_path)
+            secret_findings = scanner.scan()
+            findings.extend(secret_findings)
+        except Exception:
+            pass
+
+    # Run ScaScanner if scanning a single file directly
+    if not is_dir_scan:
+        try:
+            from scanners import ScaScanner
+            scanner = ScaScanner(source_path)
+            sca_findings = scanner.scan()
+            findings.extend(sca_findings)
+        except Exception:
+            pass
+
+    # Run IacScanner if scanning a single file directly
+    if not is_dir_scan:
+        try:
+            from scanners import IacScanner
+            scanner = IacScanner(source_path)
+            iac_findings = scanner.scan()
+            findings.extend(iac_findings)
+        except Exception:
+            pass
+
     # Format single file path if we are scanning a file directly
     if not is_dir_scan:
         for f in findings:
@@ -452,6 +482,35 @@ def review_directory(
             "description": "CodeQL semantic vulnerability check complete"
         })
 
+    # Run SecretScanner on the directory
+    try:
+        from scanners import SecretScanner
+        secret_scanner = SecretScanner(root)
+        secret_findings = secret_scanner.scan()
+        findings.extend(secret_findings)
+    except Exception as e:
+        warnings.append(f"Secret scanner failed: {str(e)}")
+
+    # Run ScaScanner on the directory
+    dependencies = []
+    try:
+        from scanners import ScaScanner
+        sca_scanner = ScaScanner(root)
+        sca_findings = sca_scanner.scan()
+        findings.extend(sca_findings)
+        dependencies = sca_scanner.all_dependencies
+    except Exception as e:
+        warnings.append(f"SCA scanner failed: {str(e)}")
+
+    # Run IacScanner on the directory
+    try:
+        from scanners import IacScanner
+        iac_scanner = IacScanner(root)
+        iac_findings = iac_scanner.scan()
+        findings.extend(iac_findings)
+    except Exception as e:
+        warnings.append(f"IaC scanner failed: {str(e)}")
+
     # Format all findings files to start with the root directory name
     for f in findings:
         if "file" in f:
@@ -463,6 +522,20 @@ def review_directory(
                     f["file"] = str(Path(r.name) / rel)
                 else:
                     f["file"] = f"{p.parent.name}/{p.name}"
+            except Exception:
+                pass
+
+    # Format all dependency files to start with the root directory name
+    for dep in dependencies:
+        if "file" in dep:
+            try:
+                p = Path(dep["file"]).resolve()
+                r = Path(root).resolve()
+                if p.is_relative_to(r):
+                    rel = p.relative_to(r)
+                    dep["file"] = str(Path(r.name) / rel)
+                else:
+                    dep["file"] = f"{p.parent.name}/{p.name}"
             except Exception:
                 pass
 
@@ -492,6 +565,7 @@ def review_directory(
         },
         "findings": findings,
         "providers": providers_status,
+        "dependencies": dependencies,
     }
 
 

@@ -1,6 +1,6 @@
 let severityChart = null;
 let isScanning = false;
-let activeFilters = { high: true, medium: true, low: true };
+let activeFilters = { critical: true, high: true, medium: true, low: true };
 let currentFindings = [];
 
 async function loadDashboard() {
@@ -45,15 +45,18 @@ function updateDashboard(data) {
 
     // Update stats
     document.getElementById('total-findings').textContent = findings.length;
-    document.getElementById('critical-count').textContent = findings.filter(f => f.severity === 'high').length;
+    // Count both critical secrets and high issues as critical count for dashboard top summary
+    document.getElementById('critical-count').textContent = findings.filter(f => f.severity === 'critical' || f.severity === 'high').length;
     document.getElementById('scanned-files').textContent = summary.scanned_files || 0;
 
     // Update filter buttons counts
     const severityCounts = {
+        critical: findings.filter(f => f.severity === 'critical').length,
         high: findings.filter(f => f.severity === 'high').length,
         medium: findings.filter(f => f.severity === 'medium').length,
         low: findings.filter(f => f.severity === 'low').length,
     };
+    document.getElementById('filter-critical-count').textContent = severityCounts.critical;
     document.getElementById('filter-high-count').textContent = severityCounts.high;
     document.getElementById('filter-medium-count').textContent = severityCounts.medium;
     document.getElementById('filter-low-count').textContent = severityCounts.low;
@@ -78,17 +81,21 @@ function updateDashboard(data) {
 
     // Show export button if results exist
     const exportBtn = document.getElementById('export-btn');
+    const sbomContainer = document.getElementById('sbom-export-container');
     if (exportBtn) {
         if (findings.length > 0 || (summary && summary.scanned_files > 0)) {
             exportBtn.style.display = 'inline-block';
+            if (sbomContainer) sbomContainer.style.display = 'inline-block';
         } else {
             exportBtn.style.display = 'none';
+            if (sbomContainer) sbomContainer.style.display = 'none';
         }
     }
 }
 
 function updateSeverityChart(findings) {
     const severityCounts = {
+        critical: findings.filter(f => f.severity === 'critical').length,
         high: findings.filter(f => f.severity === 'high').length,
         medium: findings.filter(f => f.severity === 'medium').length,
         low: findings.filter(f => f.severity === 'low').length,
@@ -104,10 +111,10 @@ function updateSeverityChart(findings) {
     severityChart = new Chart(ctx, {
         type: 'doughnut',
         data: {
-            labels: ['High', 'Medium', 'Low'],
+            labels: ['Critical', 'High', 'Medium', 'Low'],
             datasets: [{
-                data: [severityCounts.high, severityCounts.medium, severityCounts.low],
-                backgroundColor: ['#ef4444', '#f59e0b', '#3b82f6'],
+                data: [severityCounts.critical, severityCounts.high, severityCounts.medium, severityCounts.low],
+                backgroundColor: ['#b91c1c', '#ef4444', '#f59e0b', '#3b82f6'],
                 borderColor: 'white',
                 borderWidth: 2,
             }],
@@ -124,7 +131,7 @@ function updateSeverityChart(findings) {
     });
 
     // Apply active filter state visibility to the new chart slices
-    const indexMap = { high: 0, medium: 1, low: 2 };
+    const indexMap = { critical: 0, high: 1, medium: 2, low: 3 };
     for (const [sev, idx] of Object.entries(indexMap)) {
         if (!activeFilters[sev]) {
             severityChart.toggleDataVisibility(idx);
@@ -136,13 +143,13 @@ function updateSeverityChart(findings) {
 function updateFindingsList(findings) {
     const container = document.getElementById('findings-list');
     
-    // Sort findings by severity: high -> medium -> low
-    const severityOrder = { high: 0, medium: 1, low: 2 };
+    // Sort findings by severity: critical -> high -> medium -> low
+    const severityOrder = { critical: 0, high: 1, medium: 2, low: 3 };
     const sortedFindings = [...findings].sort((a, b) => {
         const sevA = (a.severity || 'low').toLowerCase();
         const sevB = (b.severity || 'low').toLowerCase();
-        const orderA = severityOrder[sevA] !== undefined ? severityOrder[sevA] : 3;
-        const orderB = severityOrder[sevB] !== undefined ? severityOrder[sevB] : 3;
+        const orderA = severityOrder[sevA] !== undefined ? severityOrder[sevA] : 4;
+        const orderB = severityOrder[sevB] !== undefined ? severityOrder[sevB] : 4;
         return orderA - orderB;
     });
 
@@ -161,6 +168,92 @@ function updateFindingsList(findings) {
         const sev = (finding.severity || 'low').toLowerCase();
         const fingerprint = finding.fingerprint ? finding.fingerprint.substring(0, 12) : 'N/A';
         
+        if (finding.type === 'IAC') {
+            return `
+            <div class="finding-item ${sev}">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <span class="finding-rule" style="color: #1e293b; background: #f1f5f9; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700; border: 1px solid #e2e8f0;">
+                            IaC: ${finding.rule}
+                        </span>
+                        <span class="finding-cwe" style="background: #f8fafc; color: #475569; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                            ${finding.cwe || 'N/A'}
+                        </span>
+                        <span style="font-family: monospace; font-size: 10px; color: #94a3b8; background: #fafafa; padding: 2px 6px; border: 1px dashed #e2e8f0; border-radius: 4px;" title="Fingerprint: ${finding.fingerprint || 'N/A'}">
+                            FP: ${fingerprint}...
+                        </span>
+                    </div>
+                    <div class="finding-description" style="font-size: 13px; color: var(--text-light); margin-top: 8px; font-weight: 500;">
+                        ${finding.description || ''}
+                    </div>
+                    
+                    <!-- Remediation Guidelines -->
+                    <div class="remediation-recommendation" style="font-size: 12px; color: #b45309; background: #fffbeb; padding: 8px 12px; border-radius: 6px; border: 1px solid #fef3c7; margin-top: 10px; line-height: 1.4;">
+                        <strong>🔧 Remediation:</strong> ${finding.remediation || 'Correct the configuration file as advised.'}
+                    </div>
+                </div>
+                <div style="font-size: 13px; line-height: 1.5; min-width: 180px; max-width: 250px;">
+                    <div style="color: var(--text); word-break: break-all;">
+                        <strong>Config:</strong> <span class="finding-path" title="${finding.file || ''}">${displayPath}</span>
+                    </div>
+                    ${finding.line ? `
+                    <div style="color: var(--text-light); margin-top: 3px;">
+                        <strong>Line:</strong> ${finding.line}
+                    </div>` : ''}
+                </div>
+                <div class="finding-severity ${sev}">
+                    ${sev.toUpperCase()}
+                </div>
+            </div>
+            `;
+        }
+
+        if (finding.type === 'SCA') {
+            return `
+            <div class="finding-item ${sev}">
+                <div style="flex: 1; min-width: 0;">
+                    <div style="display: flex; align-items: center; gap: 10px; flex-wrap: wrap;">
+                        <span class="finding-rule" style="color: #475569; background: #e2e8f0; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 700;">
+                            SCA: ${finding.package}
+                        </span>
+                        <span class="finding-cwe" style="background: #f1f5f9; color: #475569; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                            ${finding.cve || 'N/A'}
+                        </span>
+                        <span style="font-family: monospace; font-size: 10px; color: #94a3b8; background: #fafafa; padding: 2px 6px; border: 1px dashed #e2e8f0; border-radius: 4px;" title="Fingerprint: ${finding.fingerprint || 'N/A'}">
+                            FP: ${fingerprint}...
+                        </span>
+                    </div>
+                    <div style="margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; background: #fafafa; padding: 10px; border-radius: 6px; border: 1px solid #f1f5f9; font-size: 12px; margin-bottom: 8px;">
+                        <div><strong>Package:</strong> <code style="color: #0f172a; font-weight: 600;">${finding.package}</code></div>
+                        <div><strong>Installed:</strong> <code style="color: #dc2626; font-weight: 600;">${finding.installed}</code></div>
+                        <div><strong>Affected:</strong> <code style="color: #b45309; font-weight: 600;">${finding.affected}</code></div>
+                        <div><strong>Fix:</strong> <span style="color: #10b981; font-weight: 600;">${finding.fix}</span></div>
+                    </div>
+                    <div class="finding-description" style="font-size: 13px; color: var(--text-light); margin-top: 6px; font-weight: 500;">
+                        ${finding.description || ''}
+                    </div>
+                    
+                    <!-- Remediation Guidelines -->
+                    <div class="remediation-recommendation" style="font-size: 12px; color: #0f766e; background: #f0fdfa; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccfbf1; margin-top: 10px; line-height: 1.4;">
+                        <strong>🔧 Remediation:</strong> ${finding.remediation || 'Upgrade dependency as suggested.'}
+                    </div>
+                </div>
+                <div style="font-size: 13px; line-height: 1.5; min-width: 180px; max-width: 250px;">
+                    <div style="color: var(--text); word-break: break-all;">
+                        <strong>File:</strong> <span class="finding-path" title="${finding.file || ''}">${displayPath}</span>
+                    </div>
+                    ${finding.line ? `
+                    <div style="color: var(--text-light); margin-top: 3px;">
+                        <strong>Line:</strong> ${finding.line}
+                    </div>` : ''}
+                </div>
+                <div class="finding-severity ${sev}">
+                    ${sev.toUpperCase()}
+                </div>
+            </div>
+            `;
+        }
+
         return `
         <div class="finding-item ${sev}">
             <div style="flex: 1; min-width: 0;">
@@ -178,6 +271,10 @@ function updateFindingsList(findings) {
                 </div>
                 <div class="finding-description" style="font-size: 13px; color: var(--text-light); margin-top: 6px; font-weight: 500;">
                     ${finding.description || ''}
+                    ${finding.secret ? `
+                    <div style="margin-top: 6px; font-family: monospace; background: #fef2f2; color: #991b1b; padding: 4px 8px; border-radius: 4px; display: inline-block; font-size: 11px; border: 1px dashed #f87171;">
+                        <strong>Secret:</strong> <code>${finding.secret}</code>
+                    </div>` : ''}
                 </div>
                 
                 <!-- Remediation Guidelines -->
@@ -448,6 +545,34 @@ document.getElementById('export-btn').addEventListener('click', () => {
     window.location.href = '/api/dashboard/export';
 });
 
+// SBOM Export Dropdown and actions
+const exportSbomBtn = document.getElementById('export-sbom-btn');
+const sbomDropdown = document.getElementById('sbom-dropdown');
+
+if (exportSbomBtn && sbomDropdown) {
+    exportSbomBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const display = sbomDropdown.style.display;
+        sbomDropdown.style.display = display === 'block' ? 'none' : 'block';
+    });
+
+    document.getElementById('export-sbom-cyclonedx').addEventListener('click', (e) => {
+        e.preventDefault();
+        window.location.href = '/api/dashboard/sbom?format=cyclonedx';
+        sbomDropdown.style.display = 'none';
+    });
+
+    document.getElementById('export-sbom-spdx').addEventListener('click', (e) => {
+        e.preventDefault();
+        window.location.href = '/api/dashboard/sbom?format=spdx';
+        sbomDropdown.style.display = 'none';
+    });
+
+    document.addEventListener('click', () => {
+        sbomDropdown.style.display = 'none';
+    });
+}
+
 document.addEventListener('DOMContentLoaded', () => {
     // Initialize provider settings from localStorage
     const providerSettings = JSON.parse(localStorage.getItem('providerSettings') || '{}');
@@ -467,7 +592,11 @@ document.addEventListener('DOMContentLoaded', () => {
             // Toggle active styling
             if (activeFilters[severity]) {
                 btn.classList.add('active');
-                if (severity === 'high') {
+                if (severity === 'critical') {
+                    btn.style.background = '#fef2f2';
+                    btn.style.color = '#991b1b';
+                    btn.style.borderColor = '#b91c1c';
+                } else if (severity === 'high') {
                     btn.style.background = '#fee2e2';
                     btn.style.color = '#b91c1c';
                     btn.style.borderColor = '#ef4444';
@@ -489,7 +618,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Sync with Chart.js slice visibility
             if (severityChart) {
-                const indexMap = { high: 0, medium: 1, low: 2 };
+                const indexMap = { critical: 0, high: 1, medium: 2, low: 3 };
                 const chartIndex = indexMap[severity];
                 const isVisible = severityChart.getDataVisibility(chartIndex);
                 if (isVisible !== activeFilters[severity]) {
