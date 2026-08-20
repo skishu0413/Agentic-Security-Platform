@@ -75,19 +75,53 @@ function updateDashboard(data) {
     // Update provider status
     updateProviderStatus(providers);
 
+    // Render Security Policy Gate Card
+    const gateCard = document.getElementById('gate-card');
+    if (gateCard) {
+        if (data.gate_status) {
+            gateCard.style.display = 'flex';
+            const gateBadge = document.getElementById('gate-badge');
+            const gateReasons = document.getElementById('gate-reasons');
+            
+            gateBadge.textContent = data.gate_status;
+            if (data.gate_status === 'PASS') {
+                gateBadge.style.background = '#dcfce7';
+                gateBadge.style.color = '#15803d';
+                gateBadge.style.border = '1px solid #bbf7d0';
+                gateReasons.style.color = '#16a34a';
+                gateReasons.textContent = '✓ All security policies satisfied successfully.';
+            } else {
+                gateBadge.style.background = '#fee2e2';
+                gateBadge.style.color = '#b91c1c';
+                gateBadge.style.border = '1px solid #fca5a5';
+                gateReasons.style.color = '#dc2626';
+                if (data.gate_reasons && data.gate_reasons.length > 0) {
+                    gateReasons.innerHTML = data.gate_reasons.map(r => `• ${r}`).join('<br>');
+                } else {
+                    gateReasons.textContent = '❌ Gate failed due to policy violations.';
+                }
+            }
+        } else {
+            gateCard.style.display = 'none';
+        }
+    }
+
     // Update timestamp
     const now = new Date();
     document.getElementById('last-update').textContent = `Last update: ${now.toLocaleTimeString()}`;
 
     // Show export button if results exist
     const exportBtn = document.getElementById('export-btn');
+    const exportSarifBtn = document.getElementById('export-sarif-btn');
     const sbomContainer = document.getElementById('sbom-export-container');
     if (exportBtn) {
         if (findings.length > 0 || (summary && summary.scanned_files > 0)) {
             exportBtn.style.display = 'inline-block';
+            if (exportSarifBtn) exportSarifBtn.style.display = 'inline-block';
             if (sbomContainer) sbomContainer.style.display = 'inline-block';
         } else {
             exportBtn.style.display = 'none';
+            if (exportSarifBtn) exportSarifBtn.style.display = 'none';
             if (sbomContainer) sbomContainer.style.display = 'none';
         }
     }
@@ -140,6 +174,56 @@ function updateSeverityChart(findings) {
     severityChart.update();
 }
 
+function getFindingRiskPanelHtml(finding) {
+    const conf = finding.confidence || 60;
+    const riskScore = finding.risk_score !== undefined ? finding.risk_score : 5.0;
+    const riskSeverity = (finding.severity || 'medium').toUpperCase();
+    
+    let riskColor = '#4b5563';
+    if (finding.severity === 'critical') riskColor = '#b91c1c';
+    else if (finding.severity === 'high') riskColor = '#ea580c';
+    else if (finding.severity === 'medium') riskColor = '#d97706';
+    
+    const reachable = finding.reachable || 'YES';
+    const reachableColor = reachable === 'YES' ? '#dc2626' : '#059669';
+    
+    const exposed = finding.internet_exposed || 'NO';
+    const exposedColor = exposed === 'YES' ? '#dc2626' : '#059669';
+    
+    const exploit = finding.exploitability || 'MEDIUM';
+    const exploitColor = exploit === 'HIGH' ? '#dc2626' : (exploit === 'MEDIUM' ? '#d97706' : '#4b5563');
+    
+    const detectors = finding.detected_by || [finding.rule.startsWith('ast-') ? 'AST' : (finding.rule.startsWith('bandit-') ? 'Bandit' : (finding.rule.startsWith('codeql-') ? 'CodeQL' : 'AI'))];
+
+    return `
+    <!-- Risk Prioritization Panel -->
+    <div style="margin-top: 8px; display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; background: #fafafa; padding: 10px; border-radius: 6px; border: 1px dashed #e2e8f0; font-size: 11px; color: #475569; margin-bottom: 8px; line-height: 1.4;">
+        <div><strong>Risk Score:</strong> <span style="font-weight: 700; color: ${riskColor}; font-size: 12px;">${riskScore} ${riskSeverity}</span></div>
+        <div><strong>CVSS Base:</strong> <code style="font-weight: 600; color: #0f172a;">${finding.cvss || '6.5'}</code></div>
+        <div><strong>Reachable:</strong> <span style="font-weight: 600; color: ${reachableColor};">${reachable}</span></div>
+        <div><strong>Internet Exposed:</strong> <span style="font-weight: 600; color: ${exposedColor};">${exposed}</span></div>
+        <div><strong>Confidence:</strong> <code style="font-weight: 600; color: #0f172a;">${conf}%</code></div>
+        <div><strong>Exploitability:</strong> <span style="font-weight: 600; color: ${exploitColor};">${exploit}</span></div>
+        <div style="grid-column: 1 / -1; display: flex; gap: 6px; align-items: center; flex-wrap: wrap; margin-top: 4px; border-top: 1px solid #f1f5f9; padding-top: 6px;">
+            <strong>Detected by:</strong>
+            ${detectors.map(d => `<span style="background: #f1f5f9; color: #334155; border: 1px solid #e2e8f0; padding: 1px 6px; border-radius: 4px; font-weight: 600; font-size: 10px; display: inline-flex; align-items: center; gap: 2px;">✓ ${d}</span>`).join('')}
+        </div>
+        
+        <!-- Interactive Remediation Buttons -->
+        <div style="grid-column: 1 / -1; display: flex; gap: 8px; align-items: center; margin-top: 8px; border-top: 1px solid #f1f5f9; padding-top: 8px; flex-wrap: wrap;">
+            <strong>Remediation:</strong>
+            <button class="remediation-btn" onclick="triggerRemediation('${finding.fingerprint}', 'explain', this)" style="background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; border-radius: 4px; padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s;">Explain</button>
+            <button class="remediation-btn" onclick="triggerRemediation('${finding.fingerprint}', 'patch', this)" style="background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; border-radius: 4px; padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s;">Generate Patch</button>
+            <button class="remediation-btn" onclick="triggerRemediation('${finding.fingerprint}', 'dataflow', this)" style="background: #faf5ff; color: #6b21a8; border: 1px solid #e9d5ff; border-radius: 4px; padding: 3px 8px; font-size: 10px; font-weight: 600; cursor: pointer; transition: all 0.2s;">View Data Flow</button>
+        </div>
+        
+        <!-- Expanded Remediation Details Container -->
+        <div id="remediation-details-${finding.fingerprint}" style="grid-column: 1 / -1; display: none; margin-top: 8px; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; padding: 10px; font-size: 11px; line-height: 1.5;">
+        </div>
+    </div>
+    `;
+}
+
 function updateFindingsList(findings) {
     const container = document.getElementById('findings-list');
     
@@ -187,6 +271,8 @@ function updateFindingsList(findings) {
                         ${finding.description || ''}
                     </div>
                     
+                    ${getFindingRiskPanelHtml(finding)}
+                    
                     <!-- Remediation Guidelines -->
                     <div class="remediation-recommendation" style="font-size: 12px; color: #b45309; background: #fffbeb; padding: 8px 12px; border-radius: 6px; border: 1px solid #fef3c7; margin-top: 10px; line-height: 1.4;">
                         <strong>🔧 Remediation:</strong> ${finding.remediation || 'Correct the configuration file as advised.'}
@@ -233,6 +319,8 @@ function updateFindingsList(findings) {
                         ${finding.description || ''}
                     </div>
                     
+                    ${getFindingRiskPanelHtml(finding)}
+                    
                     <!-- Remediation Guidelines -->
                     <div class="remediation-recommendation" style="font-size: 12px; color: #0f766e; background: #f0fdfa; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccfbf1; margin-top: 10px; line-height: 1.4;">
                         <strong>🔧 Remediation:</strong> ${finding.remediation || 'Upgrade dependency as suggested.'}
@@ -276,6 +364,8 @@ function updateFindingsList(findings) {
                         <strong>Secret:</strong> <code>${finding.secret}</code>
                     </div>` : ''}
                 </div>
+                
+                ${getFindingRiskPanelHtml(finding)}
                 
                 <!-- Remediation Guidelines -->
                 <div class="remediation-recommendation" style="font-size: 12px; color: #0f766e; background: #f0fdfa; padding: 8px 12px; border-radius: 6px; border: 1px solid #ccfbf1; margin-top: 10px; line-height: 1.4;">
@@ -545,6 +635,11 @@ document.getElementById('export-btn').addEventListener('click', () => {
     window.location.href = '/api/dashboard/export';
 });
 
+// Export SARIF button handling
+document.getElementById('export-sarif-btn').addEventListener('click', () => {
+    window.location.href = '/api/dashboard/sarif';
+});
+
 // SBOM Export Dropdown and actions
 const exportSbomBtn = document.getElementById('export-sbom-btn');
 const sbomDropdown = document.getElementById('sbom-dropdown');
@@ -638,3 +733,282 @@ document.addEventListener('DOMContentLoaded', () => {
 
 // Refresh data every 30 seconds
 setInterval(loadDashboard, 30000);
+
+async function triggerRemediation(fingerprint, action, buttonEl) {
+    const container = document.getElementById(`remediation-details-${fingerprint}`);
+    if (!container) return;
+    
+    // If container is already visible and matches current action, hide it
+    if (container.style.display === 'block' && container.dataset.activeAction === action) {
+        container.style.display = 'none';
+        container.innerHTML = '';
+        return;
+    }
+    
+    // Show loading state
+    container.style.display = 'block';
+    container.dataset.activeAction = action;
+    container.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px; color: #475569;">
+            <svg style="animation: spin 1s linear infinite; width: 14px; height: 14px;" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                <circle style="opacity: 0.25; stroke: #cbd5e1;" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+                <path style="opacity: 0.75;" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            Generating remediation details...
+        </div>
+    `;
+    
+    try {
+        const response = await fetch('/api/remediation/remediate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fingerprint, action })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Remediation request failed');
+        }
+        
+        const resData = await response.json();
+        const details = resData.details;
+        
+        if (action === 'explain') {
+            container.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <div><strong style="color: #0f172a;">Why is this vulnerable?</strong><p style="margin: 3px 0 0 0; color: #334155;">${details.why}</p></div>
+                    <div style="border-top: 1px solid #f1f5f9; padding-top: 6px;"><strong style="color: #0f172a;">How could it be exploited?</strong><p style="margin: 3px 0 0 0; color: #334155;">${details.exploit}</p></div>
+                    <div style="border-top: 1px solid #f1f5f9; padding-top: 6px;"><strong style="color: #0f172a;">Applicable CWE:</strong><p style="margin: 3px 0 0 0; color: #475569; font-weight: 500;">${details.cwe}</p></div>
+                </div>
+            `;
+        } else if (action === 'patch') {
+            const escapedOrig = details.original_code.replace(/'/g, "\\'").replace(/"/g, '\\"');
+            const escapedSecure = details.secure_code.replace(/'/g, "\\'").replace(/"/g, '\\"');
+            
+            container.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 8px;">
+                    <div><strong style="color: #0f172a;">How to fix:</strong><p style="margin: 3px 0 0 0; color: #334155;">${details.fix_desc}</p></div>
+                    <div style="margin-top: 4px;">
+                        <strong style="color: #0f172a;">Secure Code Comparison:</strong>
+                        <div style="font-family: monospace; font-size: 11px; margin-top: 6px; border-radius: 6px; overflow: hidden; border: 1px solid #e2e8f0; line-height: 1.4;">
+                            <div style="background: #fef2f2; color: #991b1b; padding: 8px 12px; border-bottom: 1px solid #fca5a5; white-space: pre-wrap; font-family: monospace;">- ${details.original_code}</div>
+                            <div style="background: #f0fdf4; color: #166534; padding: 8px 12px; white-space: pre-wrap; font-family: monospace;">+ ${details.secure_code}</div>
+                        </div>
+                    </div>
+                    <div style="margin-top: 6px; display: flex; align-items: center; gap: 10px;">
+                        <button id="apply-patch-btn-${fingerprint}" onclick="applyPatch('${fingerprint}', '${escapedOrig}', '${escapedSecure}')" style="background: #10b981; color: white; border: none; border-radius: 4px; padding: 4px 10px; font-size: 11px; font-weight: 600; cursor: pointer; transition: background 0.2s;">
+                            Apply Patch
+                        </button>
+                        <span id="patch-status-${fingerprint}" style="font-size: 11px; font-weight: 600; color: #475569;"></span>
+                    </div>
+                </div>
+            `;
+        } else if (action === 'dataflow') {
+            const flowHtml = details.data_flow.map((node, idx) => {
+                let bg = '#f8fafc';
+                let border = '#e2e8f0';
+                let textColor = '#334155';
+                let badgeBg = '#64748b';
+                
+                if (node.type === 'SOURCE') {
+                    bg = '#eff6ff';
+                    border = '#bfdbfe';
+                    textColor = '#1e3a8a';
+                    badgeBg = '#3b82f6';
+                } else if (node.type === 'SINK') {
+                    bg = '#fef2f2';
+                    border = '#fca5a5';
+                    textColor = '#7f1d1d';
+                    badgeBg = '#ef4444';
+                }
+                
+                return `
+                <div style="background: ${bg}; border: 1px solid ${border}; border-radius: 6px; padding: 10px; display: flex; flex-direction: column; gap: 6px; position: relative;">
+                    <!-- Node Header -->
+                    <div style="display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 6px;">
+                        <span style="font-weight: 700; font-size: 11px; color: ${textColor}; display: flex; align-items: center; gap: 4px;">
+                            <span style="background: ${textColor}; color: #ffffff; border-radius: 50%; width: 16px; height: 16px; display: inline-flex; align-items: center; justify-content: center; font-size: 9px;">${node.step}</span>
+                            ${node.label}
+                        </span>
+                        <span style="background: ${badgeBg}; color: white; border-radius: 4px; padding: 1px 6px; font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px;">${node.type}</span>
+                    </div>
+                    
+                    <!-- Node Statement Code -->
+                    ${node.code ? `
+                    <div style="font-family: monospace; font-size: 10px; background: #ffffff; border: 1px solid #e2e8f0; padding: 6px 10px; border-radius: 4px; color: #0f172a; white-space: pre-wrap; font-family: monospace;">${node.code}</div>
+                    ` : ''}
+                    
+                    <!-- Node Description -->
+                    <p style="margin: 0; color: #475569; font-size: 10px; line-height: 1.4;">${node.description || ''}</p>
+                </div>
+                ${idx < details.data_flow.length - 1 ? `
+                <div style="display: flex; justify-content: center; margin: 4px 0; color: #94a3b8; font-size: 16px; font-weight: 700;">
+                    ↓
+                </div>
+                ` : ''}
+                `;
+            }).join('');
+            
+            container.innerHTML = `
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #f1f5f9; padding-bottom: 6px;">
+                        <strong style="color: #0f172a; font-size: 12px; display: flex; align-items: center; gap: 4px;">
+                            <svg style="width: 14px; height: 14px; color: #6b21a8;" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path stroke-linecap="round" stroke-linejoin="round" d="M18 18.72a9.094 9.094 0 003.741-.479 3 3 0 00-4.682-2.72m.94 3.198l.001.031c0 .225-.012.447-.037.666A11.944 11.944 0 0112 21c-2.17 0-4.207-.576-5.963-1.584A6.062 6.062 0 016 18.719m12 0a5.971 5.971 0 00-.941-3.197m0 0A5.995 5.995 0 0012 12.75a5.995 5.995 0 00-5.058 2.772m0 0a3 3 0 00-4.681 2.72 8.986 8.986 0 003.74.477m.94-3.197a5.971 5.971 0 00-.94 3.197M15 6.75a3 3 0 11-6 0 3 3 0 016 0zm6 3a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0zm-13.5 0a2.25 2.25 0 11-4.5 0 2.25 2.25 0 014.5 0z"></path>
+                            </svg>
+                            Semantic Source → Sink Trace
+                        </strong>
+                        <span style="font-size: 10px; color: #64748b; font-weight: 500;">Taint Analysis Path</span>
+                    </div>
+                    <div style="display: flex; flex-direction: column; gap: 2px;">
+                        ${flowHtml}
+                    </div>
+                </div>
+            `;
+        }
+    } catch (err) {
+        container.innerHTML = `<span style="color: #dc2626; font-weight: 600;">Failed to generate remediation information.</span>`;
+    }
+}
+
+async function applyPatch(fingerprint, originalCode, patchCode) {
+    const confirmed = confirm("Are you sure you want to apply this secure code patch? This will modify the source code file directly in your workspace.");
+    if (!confirmed) return;
+    
+    const btn = document.getElementById(`apply-patch-btn-${fingerprint}`);
+    const statusText = document.getElementById(`patch-status-${fingerprint}`);
+    if (btn) btn.disabled = true;
+    if (statusText) {
+        statusText.style.color = '#475569';
+        statusText.textContent = "Applying patch...";
+    }
+    
+    try {
+        const response = await fetch('/api/remediation/apply', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fingerprint, original_code: originalCode, patch_code: patchCode })
+        });
+        
+        if (!response.ok) {
+            const errData = await response.json();
+            throw new Error(errData.detail || 'Failed to apply patch');
+        }
+        
+        const data = await response.json();
+        if (statusText) {
+            statusText.style.color = '#059669';
+            statusText.textContent = "✓ Patch successfully applied! Run another scan to verify.";
+        }
+        if (btn) btn.style.display = 'none';
+    } catch (err) {
+        if (statusText) {
+            statusText.style.color = '#dc2626';
+            statusText.textContent = `Error: ${err.message}`;
+        }
+        if (btn) btn.disabled = false;
+    }
+}
+
+// GitHub PR simulation handler
+document.getElementById('simulate-pr-btn').addEventListener('click', async () => {
+    const btn = document.getElementById('simulate-pr-btn');
+    const repo = document.getElementById('pr-repo').value;
+    const branch = document.getElementById('pr-branch').value;
+    const prNum = parseInt(document.getElementById('pr-num').value);
+    const sha = document.getElementById('pr-sha').value;
+    
+    btn.disabled = true;
+    btn.textContent = 'Running Pipeline Scan...';
+    
+    try {
+        const response = await fetch('/api/github/simulate', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                repo_name: repo,
+                pr_number: prNum,
+                commit_sha: sha,
+                branch: branch
+            })
+        });
+        
+        if (!response.ok) {
+            throw new Error('Simulation failed');
+        }
+        
+        const report = await response.json();
+        
+        // Show simulated PR view card
+        const viewCard = document.getElementById('simulated-pr-view');
+        viewCard.style.display = 'block';
+        
+        // Render Header
+        document.getElementById('sim-pr-title').textContent = `${report.repo_name} #${report.pr_number}`;
+        document.getElementById('sim-pr-branch').textContent = `${report.branch} → main`;
+        document.getElementById('sim-pr-meta').textContent = `Commit: ${report.commit_sha} | Scan timestamp: ${report.timestamp}`;
+        
+        // Render Check Run Box
+        const checkRunBox = document.getElementById('sim-check-run-box');
+        const check = report.check_run;
+        if (check.conclusion === 'failure') {
+            checkRunBox.style.background = '#fef2f2';
+            checkRunBox.style.border = '1px solid #fca5a5';
+            checkRunBox.style.color = '#991b1b';
+            checkRunBox.innerHTML = `
+                <div style="font-size: 24px; line-height: 1;">❌</div>
+                <div>
+                    <strong style="font-size: 14px; display: block;">Security Gate Failed</strong>
+                    <span style="font-size: 12px; font-weight: 500; opacity: 0.9;">${check.summary}</span>
+                </div>
+            `;
+        } else {
+            checkRunBox.style.background = '#f0fdf4';
+            checkRunBox.style.border = '1px solid #bbf7d0';
+            checkRunBox.style.color = '#166534';
+            checkRunBox.innerHTML = `
+                <div style="font-size: 24px; line-height: 1;">✓</div>
+                <div>
+                    <strong style="font-size: 14px; display: block;">Security Gate Passed</strong>
+                    <span style="font-size: 12px; font-weight: 500; opacity: 0.9;">${check.summary}</span>
+                </div>
+            `;
+        }
+        
+        // Render Comments List
+        const commentsList = document.getElementById('sim-comments-list');
+        if (report.pr_comments.length === 0) {
+            commentsList.innerHTML = `<div style="color: #64748b; font-style: italic; font-size: 12px; padding: 10px 0;">No comments generated (all checks clean).</div>`;
+        } else {
+            commentsList.innerHTML = report.pr_comments.map(comment => `
+                <div style="border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden; font-size: 12px; background: #ffffff;">
+                    <!-- File line indicator header -->
+                    <div style="background: #f8fafc; border-bottom: 1px solid #e2e8f0; padding: 6px 12px; font-weight: 600; color: #475569; display: flex; justify-content: space-between;">
+                        <span>📂 ${comment.file}</span>
+                        <span>Line ${comment.line}</span>
+                    </div>
+                    
+                    <!-- Code location display block -->
+                    <div style="font-family: monospace; font-size: 11px; padding: 10px 12px; background: #fdfdfd; border-bottom: 1px dashed #e2e8f0; color: #0f172a; white-space: pre-wrap; font-family: monospace;"># line ${comment.line}</div>
+                    
+                    <!-- GitHub review comment block -->
+                    <div style="padding: 12px; background: #ffffff;">
+                        <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                            <div style="background: #1e293b; color: white; border-radius: 50%; width: 20px; height: 20px; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: bold;">🛡️</div>
+                            <strong style="color: #0f172a; font-size: 11px;">Agentic Security Check bot</strong>
+                            <span style="background: #f1f5f9; color: #475569; border-radius: 4px; padding: 1px 5px; font-size: 9px; font-weight: 700;">BOT</span>
+                        </div>
+                        <div style="color: #334155; line-height: 1.5; margin-left: 28px;">
+                            ${comment.body.replace(/\n/g, '<br>')}
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+        
+    } catch (err) {
+        alert('Failed to simulate PR scan: ' + err.message);
+    } finally {
+        btn.disabled = false;
+        btn.textContent = 'Trigger PR Pipeline Scan';
+    }
+});

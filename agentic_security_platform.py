@@ -62,6 +62,63 @@ if config_path.exists():
         print(f"Error loading config.yaml: {e}")
 
 
+def load_security_policy(repo_path: Path | str) -> dict[str, Any]:
+    default_policy = {
+        "fail_on": ["critical", "high"],
+        "scanners": {
+            "sast": True,
+            "secrets": True,
+            "dependencies": True,
+            "iac": True,
+            "ai_review": True
+        },
+        "thresholds": {
+            "critical": 0,
+            "high": 0
+        },
+        "sandbox": {
+            "network": False,
+            "timeout": 600,
+            "memory": "4GB",
+            "cpu": 2
+        }
+    }
+    
+    path = Path(repo_path)
+    root_dir = path.parent if path.is_file() else path
+    
+    policy_files = [".security.yaml", "security.yaml", ".security.yml", "security.yml"]
+    for pf in policy_files:
+        p_file = root_dir / pf
+        if p_file.exists():
+            try:
+                data = yaml.safe_load(p_file.read_text(encoding="utf-8")) or {}
+                policy = data.get("security", {})
+                
+                # Merge scanners
+                scanners = default_policy["scanners"].copy()
+                scanners.update(policy.get("scanners", {}))
+                
+                # Merge thresholds
+                thresholds = default_policy["thresholds"].copy()
+                thresholds.update(policy.get("thresholds", {}))
+                
+                # Merge sandbox
+                sandbox = default_policy["sandbox"].copy()
+                sandbox.update(policy.get("sandbox", {}))
+                
+                return {
+                    "fail_on": policy.get("fail_on", default_policy["fail_on"]),
+                    "scanners": scanners,
+                    "thresholds": thresholds,
+                    "sandbox": sandbox
+                }
+            except Exception as e:
+                print(f"Error parsing policy file {pf}: {e}")
+                
+    return default_policy
+
+
 def check_provider_configured(provider: str) -> bool:
     if provider == "openai":
         return bool(os.environ.get("OPENAI_API_KEY"))
@@ -180,6 +237,88 @@ class AgenticSecurityPlatform:
             return self._scan_with_cursor(source_text)
         return []
 
+    def generate_remediation_with_ai(self, finding: dict[str, Any], sink: str) -> dict[str, Any] | None:
+        provider = None
+        for p in ["openai", "claude", "ollama", "cursor"]:
+            if check_provider_configured(p):
+                provider = p
+                break
+                
+        if not provider:
+            return None
+            
+        prompt = f"""
+You are a security remediation assistant. Analyze the following vulnerability finding:
+File: {finding.get("file")}
+Line: {finding.get("line")}
+CWE: {finding.get("cwe")}
+Description: {finding.get("description")}
+Code statement (sink): {sink}
+
+Generate a detailed remediation report in JSON format containing:
+- "why": explanation of why it is vulnerable.
+- "source": where the untrusted input source is.
+- "sink": where the vulnerable sink is.
+- "exploit": how it could be exploited.
+- "cwe": cwe detail.
+- "fix_desc": how to fix it.
+- "original_code": the exact insecure line(s).
+- "secure_code": the secure drop-in replacement line(s).
+- "data_flow": a list of steps tracing the data from source to sink. Each step must be a JSON object containing "step" (integer), "type" (string: "SOURCE", "PROPAGATION", or "SINK"), "label" (string), "code" (string), and "description" (string).
+
+Return ONLY a valid JSON object matching this schema. No markdown wrapping.
+"""
+        try:
+            raw_response = ""
+            if provider == "openai":
+                from openai import OpenAI
+                client = OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
+                res = client.chat.completions.create(
+                    model="gpt-4o-mini",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2
+                )
+                raw_response = res.choices[0].message.content
+            elif provider == "claude":
+                import anthropic
+                client = anthropic.Anthropic(api_key=os.environ.get("ANTHROPIC_API_KEY"))
+                res = client.messages.create(
+                    model="claude-3-5-sonnet-20240620",
+                    max_tokens=2048,
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.2
+                )
+                raw_response = res.content[0].text
+            elif provider == "ollama":
+                import httpx
+                url = os.environ.get("OLLAMA_HOST", "http://localhost:11434") + "/api/chat"
+                payload = {
+                    "model": os.environ.get("OLLAMA_MODEL", "llama3"),
+                    "messages": [{"role": "user", "content": prompt}],
+                    "stream": False,
+                    "options": {"temperature": 0.2}
+                }
+                res = httpx.post(url, json=payload, timeout=30.0)
+                if res.status_code == 200:
+                    raw_response = res.json()["message"]["content"]
+                
+            if raw_response:
+                clean = raw_response.strip()
+                if clean.startswith("```"):
+                    if "```json" in clean:
+                        clean = clean.split("```json", 1)[1]
+                    else:
+                        clean = clean.split("```", 1)[1]
+                    if "```" in clean:
+                        clean = clean.rsplit("```", 1)[0]
+                    clean = clean.strip()
+                data = json.loads(clean)
+                if isinstance(data, dict):
+                    return data
+        except Exception:
+            pass
+        return None
+
     def _parse_llm_json(self, content: str) -> list[dict[str, Any]]:
         content = content.strip()
         if content.startswith("```"):
@@ -292,34 +431,40 @@ def evaluate_source_code(
     enabled_providers: list[str] | None = None,
     platform_instance: AgenticSecurityPlatform | None = None,
     is_dir_scan: bool = False,
-    scan_profile: str = "comprehensive"
+    scan_profile: str = "comprehensive",
+    policy: dict[str, Any] | None = None
 ) -> dict[str, Any]:
+    if policy is None:
+        policy = load_security_policy(source_path)
+        
+    scanners_policy = policy.get("scanners", {})
     findings = []
     lines = source_text.splitlines()
 
     # Run Bandit local static checks dynamically on this file (skip if ast_only)
-    if scan_profile in ("comprehensive", "local_only"):
-        if not is_dir_scan and Path(source_path).exists() and Path(source_path).is_file():
-            try:
-                scanner = ScannerIntegration(source_path)
-                bandit_results = scanner.run_bandit()
-                if bandit_results:
-                    from cwe_helper import map_bandit_cwe
-                    for result in bandit_results:
-                        cwe_id = map_bandit_cwe(result.get("test_id", ""), result.get("issue_cwe"))
-                        findings.append({
-                            "file": source_path,
-                            "line": result.get("line_number"),
-                            "rule": result.get("test_id", "bandit"),
-                            "cwe": cwe_id,
-                            "severity": result.get("issue_severity", "medium").lower(),
-                            "description": result.get("issue_text", "Bandit detected issue")
-                        })
-            except Exception:
-                pass
+    if scanners_policy.get("sast", True):
+        if scan_profile in ("comprehensive", "local_only"):
+            if not is_dir_scan and Path(source_path).exists() and Path(source_path).is_file():
+                try:
+                    scanner = ScannerIntegration(source_path)
+                    bandit_results = scanner.run_bandit()
+                    if bandit_results:
+                        from cwe_helper import map_bandit_cwe
+                        for result in bandit_results:
+                            cwe_id = map_bandit_cwe(result.get("test_id", ""), result.get("issue_cwe"))
+                            findings.append({
+                                "file": source_path,
+                                "line": result.get("line_number"),
+                                "rule": result.get("test_id", "bandit"),
+                                "cwe": cwe_id,
+                                "severity": result.get("issue_severity", "medium").lower(),
+                                "description": result.get("issue_text", "Bandit detected issue")
+                            })
+                except Exception:
+                    pass
 
-    # Run AI analysis (only if profile is comprehensive)
-    if scan_profile == "comprehensive" and enabled_providers and platform_instance:
+    # Run AI analysis (only if profile is comprehensive and enabled in policy)
+    if scan_profile == "comprehensive" and enabled_providers and platform_instance and scanners_policy.get("ai_review", True):
         from concurrent.futures import ThreadPoolExecutor
         configured_providers = [p for p in enabled_providers if check_provider_configured(p)]
         if configured_providers:
@@ -340,8 +485,8 @@ def evaluate_source_code(
                         "description": f.get("description", "AI detected security vulnerability")
                     })
 
-    # Run SecretScanner if scanning a single file directly
-    if not is_dir_scan:
+    # Run SecretScanner if scanning a single file directly and enabled in policy
+    if not is_dir_scan and scanners_policy.get("secrets", True):
         try:
             from scanners import SecretScanner
             scanner = SecretScanner(source_path)
@@ -350,8 +495,8 @@ def evaluate_source_code(
         except Exception:
             pass
 
-    # Run ScaScanner if scanning a single file directly
-    if not is_dir_scan:
+    # Run ScaScanner if scanning a single file directly and enabled in policy
+    if not is_dir_scan and scanners_policy.get("dependencies", True):
         try:
             from scanners import ScaScanner
             scanner = ScaScanner(source_path)
@@ -360,8 +505,8 @@ def evaluate_source_code(
         except Exception:
             pass
 
-    # Run IacScanner if scanning a single file directly
-    if not is_dir_scan:
+    # Run IacScanner if scanning a single file directly and enabled in policy
+    if not is_dir_scan and scanners_policy.get("iac", True):
         try:
             from scanners import IacScanner
             scanner = IacScanner(source_path)
@@ -415,10 +560,14 @@ def review_directory(
     scanned_files = []
     warnings = []
 
+    # Load security policy
+    policy = load_security_policy(root)
+    scanners_policy = policy.get("scanners", {})
+
     # Throttle AI scans
     max_ai_files = 5
     ai_files_scanned = 0
-    run_ai_on_files = (scan_profile == "comprehensive")
+    run_ai_on_files = (scan_profile == "comprehensive") and scanners_policy.get("ai_review", True)
 
     for dirpath, dirnames, filenames in os.walk(root):
         dirnames[:] = [d for d in dirnames if d not in IGNORE_DIRS]
@@ -446,7 +595,8 @@ def review_directory(
                         enabled_providers if run_ai else None,
                         platform_instance,
                         is_dir_scan=True,
-                        scan_profile=scan_profile
+                        scan_profile=scan_profile,
+                        policy=policy
                     )
                     findings.extend(file_result["findings"])
                 except PermissionError:
@@ -456,60 +606,64 @@ def review_directory(
 
     bandit_results = []
     codeql_results = []
-    if scan_profile in ("comprehensive", "local_only"):
-        scanner = ScannerIntegration(root)
-        bandit_results = scanner.run_bandit()
-        codeql_results = scanner.run_codeql()
+    if scanners_policy.get("sast", True):
+        if scan_profile in ("comprehensive", "local_only"):
+            scanner = ScannerIntegration(root)
+            bandit_results = scanner.run_bandit()
+            codeql_results = scanner.run_codeql()
 
-    if bandit_results:
-        from cwe_helper import map_bandit_cwe
-        for result in bandit_results:
-            cwe_id = map_bandit_cwe(result.get("test_id", ""), result.get("issue_cwe"))
+        if bandit_results:
+            from cwe_helper import map_bandit_cwe
+            for result in bandit_results:
+                cwe_id = map_bandit_cwe(result.get("test_id", ""), result.get("issue_cwe"))
+                findings.append({
+                    "file": result.get("filename", ""),
+                    "line": result.get("line_number"),
+                    "rule": result.get("test_id", "bandit"),
+                    "cwe": cwe_id,
+                    "severity": result.get("issue_severity", "medium").lower(),
+                    "description": result.get("issue_text", "Bandit detected issue")
+                })
+        if codeql_results:
             findings.append({
-                "file": result.get("filename", ""),
-                "line": result.get("line_number"),
-                "rule": result.get("test_id", "bandit"),
-                "cwe": cwe_id,
-                "severity": result.get("issue_severity", "medium").lower(),
-                "description": result.get("issue_text", "Bandit detected issue")
+                "file": str(root),
+                "rule": "codeql-integrated",
+                "cwe": "CWE-79",
+                "severity": "medium",
+                "description": "CodeQL semantic vulnerability check complete"
             })
-    if codeql_results:
-        findings.append({
-            "file": str(root),
-            "rule": "codeql-integrated",
-            "cwe": "CWE-79",
-            "severity": "medium",
-            "description": "CodeQL semantic vulnerability check complete"
-        })
 
     # Run SecretScanner on the directory
-    try:
-        from scanners import SecretScanner
-        secret_scanner = SecretScanner(root)
-        secret_findings = secret_scanner.scan()
-        findings.extend(secret_findings)
-    except Exception as e:
-        warnings.append(f"Secret scanner failed: {str(e)}")
+    if scanners_policy.get("secrets", True):
+        try:
+            from scanners import SecretScanner
+            secret_scanner = SecretScanner(root)
+            secret_findings = secret_scanner.scan()
+            findings.extend(secret_findings)
+        except Exception as e:
+            warnings.append(f"Secret scanner failed: {str(e)}")
 
     # Run ScaScanner on the directory
     dependencies = []
-    try:
-        from scanners import ScaScanner
-        sca_scanner = ScaScanner(root)
-        sca_findings = sca_scanner.scan()
-        findings.extend(sca_findings)
-        dependencies = sca_scanner.all_dependencies
-    except Exception as e:
-        warnings.append(f"SCA scanner failed: {str(e)}")
+    if scanners_policy.get("dependencies", True):
+        try:
+            from scanners import ScaScanner
+            sca_scanner = ScaScanner(root)
+            sca_findings = sca_scanner.scan()
+            findings.extend(sca_findings)
+            dependencies = sca_scanner.all_dependencies
+        except Exception as e:
+            warnings.append(f"SCA scanner failed: {str(e)}")
 
     # Run IacScanner on the directory
-    try:
-        from scanners import IacScanner
-        iac_scanner = IacScanner(root)
-        iac_findings = iac_scanner.scan()
-        findings.extend(iac_findings)
-    except Exception as e:
-        warnings.append(f"IaC scanner failed: {str(e)}")
+    if scanners_policy.get("iac", True):
+        try:
+            from scanners import IacScanner
+            iac_scanner = IacScanner(root)
+            iac_findings = iac_scanner.scan()
+            findings.extend(iac_findings)
+        except Exception as e:
+            warnings.append(f"IaC scanner failed: {str(e)}")
 
     # Format all findings files to start with the root directory name
     for f in findings:

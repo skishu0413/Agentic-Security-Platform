@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Agentic Security Platform - Dashboard</title>
-    <link rel="stylesheet" href="/static/style.css?v=1.0.9">
+    <link rel="stylesheet" href="/static/style.css?v=1.1.1">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
 <body>
@@ -15,6 +15,7 @@
             <a href="#findings" class="nav-item" data-tab="findings">Findings</a>
             <a href="#providers" class="nav-item" data-tab="providers">Providers</a>
             <a href="#scan" class="nav-item" data-tab="scan">Scan</a>
+            <a href="#github-pr" class="nav-item" data-tab="github-pr">CI/CD PR Scans</a>
         </nav>
     </div>
 
@@ -25,6 +26,7 @@
                 <span id="status" class="status-badge">Loading...</span>
                 <span id="last-update" class="timestamp">Last update: --:--:--</span>
                 <button id="export-btn" class="btn-export" style="display: none;">Export Report</button>
+                <button id="export-sarif-btn" class="btn-export" style="display: none; background: #6b21a8; border-color: #6b21a8;">Export SARIF</button>
                 <div id="sbom-export-container" style="display: none; position: relative;">
                     <button id="export-sbom-btn" class="btn-export" style="background: #0f766e; border-color: #0f766e;">Export SBOM ▾</button>
                     <div id="sbom-dropdown" style="display: none; position: absolute; right: 0; top: 100%; background: #ffffff; border: 1px solid #cbd5e1; border-radius: 6px; box-shadow: 0 4px 6px -1px rgba(0,0,0,0.1); z-index: 100; min-width: 140px; margin-top: 4px;">
@@ -52,6 +54,19 @@
                                 <div class="risk-label" id="risk-level">Unknown</div>
                                 <div class="risk-subtext" id="risk-message">No data available</div>
                             </div>
+                        </div>
+                    </div>
+
+                    <!-- Security Policy Gate Card -->
+                    <div class="card gate-card" id="gate-card" style="display: none; flex-direction: column; min-width: 250px;">
+                        <h3>Security Policy Gate</h3>
+                        <div id="gate-display" style="display: flex; align-items: center; gap: 10px; margin-top: 15px;">
+                            <div id="gate-badge" style="font-size: 14px; font-weight: 800; padding: 6px 12px; border-radius: 6px; text-transform: uppercase;">
+                                PASS
+                            </div>
+                        </div>
+                        <div id="gate-reasons" style="font-size: 11px; color: #64748b; margin-top: 10px; line-height: 1.4; max-height: 100px; overflow-y: auto;">
+                            No violations detected.
                         </div>
                     </div>
                     <div class="card chart-card">
@@ -241,9 +256,80 @@
 
                 </div>
             </section>
+
+            <!-- GitHub PR tab -->
+            <section id="github-pr" class="tab-content">
+                <div style="display: grid; grid-template-columns: 1fr; gap: 20px;">
+                    
+                    <!-- GitHub Actions Integration Info & Simulator Form -->
+                    <div class="card" style="padding: 20px;">
+                        <h2 style="margin-top: 0; color: #0f172a; font-size: 18px; display: flex; align-items: center; gap: 8px;">
+                            <svg style="width: 20px; height: 20px; color: #0f172a;" fill="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                                <path fill-rule="evenodd" clip-rule="evenodd" d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"></path>
+                            </svg>
+                            CI/CD Pull Request Integration Simulator
+                        </h2>
+                        <p style="color: #475569; font-size: 13px; line-height: 1.5; margin: 6px 0 15px 0;">
+                            Expose security gates directly inside the developer workflow. Simulate check runs and review comment annotations that block dangerous pull requests when vulnerabilities are detected in modified branch files.
+                        </p>
+                        
+                        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 15px; margin-bottom: 15px;">
+                            <div class="form-group">
+                                <label for="pr-repo" style="font-weight: 600; color: #475569; font-size: 12px;">Repository</label>
+                                <input type="text" id="pr-repo" value="skishu0413/my-secure-app" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #cbd5e1; box-sizing: border-box; margin-top: 4px;">
+                            </div>
+                            <div class="form-group">
+                                <label for="pr-branch" style="font-weight: 600; color: #475569; font-size: 12px;">Branch Name</label>
+                                <input type="text" id="pr-branch" value="feature/user-auth-bypass" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #cbd5e1; box-sizing: border-box; margin-top: 4px;">
+                            </div>
+                            <div class="form-group">
+                                <label for="pr-num" style="font-weight: 600; color: #475569; font-size: 12px;">Pull Request Number</label>
+                                <input type="number" id="pr-num" value="88" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #cbd5e1; box-sizing: border-box; margin-top: 4px;">
+                            </div>
+                            <div class="form-group">
+                                <label for="pr-sha" style="font-weight: 600; color: #475569; font-size: 12px;">Commit SHA</label>
+                                <input type="text" id="pr-sha" value="fa72b6c1d" style="width: 100%; padding: 8px 10px; border-radius: 6px; border: 1px solid #cbd5e1; box-sizing: border-box; margin-top: 4px;">
+                            </div>
+                        </div>
+                        
+                        <div style="display: flex; flex-wrap: wrap; gap: 10px; align-items: center;">
+                            <button id="simulate-pr-btn" class="btn-primary" style="padding: 10px 20px;">Trigger PR Pipeline Scan</button>
+                            <div style="background: #f1f5f9; border: 1px solid #cbd5e1; border-radius: 6px; padding: 8px 12px; font-size: 11px; color: #475569; font-family: monospace; display: inline-flex; align-items: center; gap: 6px;">
+                                <strong>Webhook URL:</strong> http://localhost:8000/api/github/webhook
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Simulated PR View Dashboard -->
+                    <div id="simulated-pr-view" class="card" style="padding: 20px; display: none;">
+                        <!-- PR Header Info -->
+                        <div style="border-bottom: 1px solid #e2e8f0; padding-bottom: 12px; margin-bottom: 15px;">
+                            <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                                <h3 id="sim-pr-title" style="margin: 0; font-size: 18px; color: #0f172a;">Repository #PR</h3>
+                                <span style="background: #dbeafe; color: #1e40af; font-size: 11px; padding: 2px 8px; border-radius: 4px; font-weight: 600;" id="sim-pr-branch">branch</span>
+                            </div>
+                            <div style="font-size: 11px; color: #64748b; margin-top: 4px;" id="sim-pr-meta">Commit SHA | Updated at</div>
+                        </div>
+                        
+                        <!-- GitHub Actions Check Run Panel -->
+                        <div id="sim-check-run-box" style="margin-bottom: 15px; border-radius: 6px; padding: 12px; display: flex; align-items: flex-start; gap: 10px;">
+                            <!-- State indicator will load here -->
+                        </div>
+                        
+                        <!-- GitHub review comments -->
+                        <div>
+                            <h4 style="margin: 0 0 10px 0; color: #0f172a; font-size: 14px;">Inline Review Comments Annotations</h4>
+                            <div id="sim-comments-list" style="display: flex; flex-direction: column; gap: 12px;">
+                                <!-- Inline comments will load here -->
+                            </div>
+                        </div>
+                    </div>
+                    
+                </div>
+            </section>
         </div>
     </div>
 
-    <script src="/static/dashboard.js?v=1.0.9"></script>
+    <script src="/static/dashboard.js?v=1.1.1"></script>
 </body>
 </html>
